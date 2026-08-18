@@ -65,4 +65,9 @@ class Result(Base):
     metrics_json: Mapped[dict] = mapped_column(JSON, default=dict)
     trace_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Set when the adapter call for this case raised, instead of aborting
+    # the whole run (sagwa/runner). Non-null `error` means `output`/`context`
+    # are empty and `metrics_json` was never computed for this case.
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
     run: Mapped["Run"] = relationship(back_populates="results")
