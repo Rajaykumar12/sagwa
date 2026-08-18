@@ -1,0 +1,35 @@
+[project]
+name = "sagwa"
+version = "0.1.0"
+description = "LLM evaluation & regression-testing platform (CI/CD infrastructure for LLM quality)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Production-shaped storage (see docs/adr/0004-sqlite-default-defer-postgres.md).
+# SQLite (stdlib, no driver needed) is the default for local/prototype use.
+postgres = ["psycopg[binary]>=3.1"]
+# Week 5-6: RAGAS reference-free RAG metrics + Groq-backed LLM judge harness.
+metrics = ["ragas>=0.1", "langchain-groq>=0.1"]
+# Week 7-8: HDBSCAN failure clustering + stat-sig diff testing.
+clustering = ["sentence-transformers>=3.0", "hdbscan>=0.8", "scipy>=1.13"]
+# Week 11: trend/cluster-browser dashboard.
+dashboard = ["streamlit>=1.35"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+sagwa = "sagwa.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sagwa"]

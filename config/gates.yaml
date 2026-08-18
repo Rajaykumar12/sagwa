@@ -1,0 +1,9 @@
+# CI gate thresholds (PRD FR-25). Read by `sagwa gate` (not implemented yet —
+# see PLAN.md §9, Week 9-10). Per-metric operators: gt, gte, lt, lte.
+metrics:
+  faithfulness:
+    op: gte
+    value: 0.85
+  context_precision:
+    op: gte
+    value: 0.80

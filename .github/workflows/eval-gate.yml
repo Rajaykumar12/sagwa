@@ -1,0 +1,17 @@
+# CI gate (PRD FR-23, FR-24). PLACEHOLDER — `sagwa gate` isn't implemented
+# yet (see PLAN.md §9, Week 9-10); this workflow documents the intended shape
+# but does not run a real gate check.
+name: eval-gate
+
+on:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: TODO - not implemented yet
+        run: |
+          echo "sagwa gate is not implemented yet — see PLAN.md §9 (Week 9-10)"
+          exit 0
