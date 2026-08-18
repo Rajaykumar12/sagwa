@@ -17,7 +17,8 @@ dependencies = [
 # SQLite (stdlib, no driver needed) is the default for local/prototype use.
 postgres = ["psycopg[binary]>=3.1"]
 # Week 5-6: RAGAS reference-free RAG metrics + Groq-backed LLM judge harness.
-metrics = ["ragas>=0.1", "langchain-groq>=0.1"]
+# sentence-transformers also backs reference-based embedding similarity (FR-8).
+metrics = ["ragas>=0.1", "langchain-groq>=0.1", "sentence-transformers>=3.0"]
 # Week 7-8: HDBSCAN failure clustering + stat-sig diff testing.
 clustering = ["sentence-transformers>=3.0", "hdbscan>=0.8", "scipy>=1.13"]
 # Week 11: trend/cluster-browser dashboard.
