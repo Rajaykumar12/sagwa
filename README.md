@@ -1,89 +1,161 @@
 # Sagwa
 
-**LLM Evaluation & Regression-Testing Platform** — CI/CD infrastructure for LLM quality. Run a golden dataset against a target LLM pipeline, diff two runs for statistically-grounded regressions, cluster failures automatically, and gate a CI pipeline on quality thresholds.
+CI/CD infrastructure for LLM quality. Sagwa runs a versioned golden dataset
+against any LLM pipeline, computes structured per-case metrics, diffs two
+runs for statistically-grounded regressions, clusters failures automatically,
+and gates a CI pipeline on quality thresholds — the same role pytest + CI
+plays for a normal codebase, applied to prompts, models, and RAG configs.
 
-Primary target pipeline is [../ringo](../ringo), a real, separately-maintained RAG chat app; Sagwa evaluates it through a thin adapter (`sagwa/adapters/ringo.py`) with zero coupling to its internals.
+```
+golden set (.jsonl)  →  sagwa run  →  metrics per case  →  sagwa diff  →  sagwa gate (CI)
+```
 
-> This README is the only Markdown file tracked in git (see [Docs](#docs) below for why) — it's meant to be the single source of truth for anyone browsing the repo without a local checkout of the working notes.
+## Why
 
-## Status
+A prompt tweak, a model swap, or a retrieval change today usually ships on
+vibes: someone skims a handful of outputs and merges. Sagwa replaces that
+with a testable, auditable process — every run is pinned to a git SHA and
+dataset version, every regression claim comes with a significance test, and
+every judge score is calibrated against human labels before it's trusted for
+gating.
 
-**Week 1-2 of 12** (of the build plan). Done: golden-set schema/loader, SQLite-backed run history + Alembic migration, the target-adapter contract, and a minimal CLI wired end-to-end against a stub target — all tested (`pytest`, 4/4 passing). Not started: RAGAS/judge metrics, judge calibration, the diff engine, failure clustering, the CI gate, and the dashboard — these exist only as empty modules with roadmap docstrings (`sagwa/{runner,metrics,judge,diff,clustering,dashboard}/`) or explicit CLI/workflow placeholders (`sagwa diff`, `sagwa gate`, `.github/workflows/eval-gate.yml`) that print "not implemented" rather than fake a result.
-
-The `RingoAdapter` (`sagwa/adapters/ringo.py`) is a skeleton — `.run()` raises `NotImplementedError` and it isn't registered in the CLI yet, deliberately, until it's validated against a live ringo instance.
-
-## Setup
+## Install
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[metrics,judge,clustering,dashboard,dev]"   # core deps + every optional group
-cp .env.example .env                                         # fill in GROQ_API_KEY
-alembic upgrade head                                          # creates the runs/results tables in sagwa.db
+pip install -e ".[metrics,judge,clustering,dashboard,dev]"
+cp .env.example .env          # fill in GROQ_API_KEY
+alembic upgrade head          # creates the runs/results tables — required before first run
 ```
 
-No services to start — storage defaults to a local SQLite file (`sagwa.db`, gitignored). Postgres remains the intended production-shaped store once failure clustering needs `pgvector`; switching is a `DATABASE_URL` change plus `pip install -e ".[postgres]"`, no code changes.
+Storage defaults to a local SQLite file (`sagwa.db`, gitignored) — no
+services to start. `DATABASE_URL` switches to Postgres later with no code
+changes (see `docs/adr/0004-sqlite-default-defer-postgres.md`).
 
-**Gotcha**: `alembic upgrade head` must run before `pytest` or `sagwa run` — a `sagwa.db` file existing doesn't mean it's migrated (SQLAlchemy will happily create an empty file on first connection). Skipping this fails with `sqlite3.OperationalError: no such table: runs`.
+## Usage
 
-## Try it
+Run a golden set against the built-in stub target (validates the pipeline
+end-to-end with no external dependencies):
 
 ```bash
 sagwa run --target stub --dataset golden_sets/example.jsonl
 ```
 
-`sagwa diff --baseline <id> --candidate <id>` and `sagwa gate --run-id <id>` are registered CLI commands but not implemented yet.
+### Evaluating your own pipeline
 
-## Tests
+Sagwa integrates any ML project through one small contract —
+`TargetAdapter` (`sagwa/adapters/base.py`) — with **zero required changes
+to either codebase**: implement one class, point `--target` at it.
+
+```python
+# your_project/sagwa_adapter.py
+from sagwa.adapters.base import AdapterResult
+
+class MyAdapter:
+    name = "my-pipeline"
+
+    def run(self, case_input: str) -> AdapterResult:
+        answer = my_pipeline.answer(case_input)
+        return AdapterResult(answer=answer, context=None, latency_ms=..., tokens=..., cost_usd=...)
+```
+
+```bash
+sagwa run --target your_project.sagwa_adapter:MyAdapter --dataset your_golden_set.jsonl
+```
+
+See [`examples/adapters/README.md`](examples/adapters/README.md) for the
+full guide, and `examples/adapters/ringo_adapter.py` for a worked example
+integrating [ringo](../ringo), a real RAG chat app.
+
+### Diffing and gating
+
+```bash
+sagwa diff --baseline <run-id> --candidate <run-id>   # not yet implemented
+sagwa gate --run-id <run-id>                          # not yet implemented
+```
+
+## Golden sets
+
+A golden set is a versioned JSONL file, one case per line:
+
+```json
+{"id": "ex-001", "input": "What is the capital of France?", "expected_output": "Paris", "task_type": "rag_qa", "tags": ["geography"]}
+```
+
+Golden sets live in git alongside code — a change to expected behavior goes
+through a PR and is diffable, the same review discipline as a test file.
+
+## How it works
+
+```
+sagwa/
+├── cli.py         # `sagwa run|diff|gate` + the adapter-loading mechanism
+├── adapters/       # TargetAdapter protocol; the `stub` built-in
+├── datasets/        # golden-set schema + JSONL loader/validator
+├── runner/           # bounded-concurrency case execution
+├── metrics/           # reference-based, safety, RAGAS metrics
+├── judge/              # LLM-as-judge harness + calibration engine
+├── diff/                 # regression detection + significance testing
+├── clustering/            # failure clustering
+├── dashboard/              # trend/cost/cluster views
+└── storage/                 # SQLAlchemy models + migrations (Run, Result)
+examples/adapters/    # reference TargetAdapter implementations (e.g. ringo)
+golden_sets/           # versioned golden-set JSONL files
+calibration/            # judge calibration study artifacts
+config/gates.yaml        # CI gate thresholds
+```
+
+Each run is persisted as a `Run` row (git SHA, dataset version, model,
+target) with one `Result` row per case (output, latency, cost,
+`metrics_json`) — both tables are append-only, so run history is never
+mutated, only appended.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | — | LLM judge + RAGAS metrics |
+| `DATABASE_URL` | `sqlite:///./sagwa.db` | run-history storage |
+
+These are the only two core env vars. Each target adapter owns its own
+config (e.g. the ringo example's `RINGO_REPO_PATH`) — see
+`examples/adapters/README.md`.
+
+## Testing
 
 ```bash
 pytest
 ```
 
-## Environment variables
+## Status
 
-See `.env.example` for the full list with rationale. Summary:
-
-| Variable | Default | Used by |
-|---|---|---|
-| `GROQ_API_KEY` | — | The LLM judge (not wired up yet) — same provider ringo's own ad-hoc judge (`backend/eval.py`) uses, for an apples-to-apples calibration comparison later |
-| `DATABASE_URL` | `sqlite:///./sagwa.db` | `sagwa/storage/db.py` |
-| `RINGO_REPO_PATH` | `../ringo` | `sagwa/adapters/ringo.py`, once implemented |
-
-## Project layout
-
-```
-sagwa/
-├── cli.py            # `sagwa run|diff|gate` entry points
-├── adapters/          # TargetAdapter protocol + AdapterResult; stub adapter (done), ringo adapter (skeleton)
-├── datasets/           # GoldenCase pydantic schema + JSONL loader/validator
-├── storage/            # SQLAlchemy models (Run, Result) + session factory
-├── runner/             # empty — async batch execution, not started
-├── metrics/            # empty — reference-based/RAGAS/safety metrics, not started
-├── judge/              # empty — LLM-as-judge + calibration workflow, not started
-├── diff/               # empty — regression/stat-sig diff engine, not started
-├── clustering/          # empty — HDBSCAN failure clustering, not started
-└── dashboard/            # empty — Streamlit dashboard, not started
-golden_sets/            # versioned golden-set JSONL files (currently: 3-case example.jsonl)
-migrations/              # Alembic migrations for the run-history schema
-calibration/             # judge calibration study artifacts (currently: stub report)
-config/gates.yaml        # CI gate thresholds — not yet read by any code
-tests/                   # pytest suite (dataset loader + storage roundtrip)
-docs/                    # working notes — see below
-```
+Golden-set schema/loader, run-history storage, the pluggable adapter
+mechanism, the async runner, reference-based + safety metrics, and the
+LLM-judge + calibration engine are implemented and tested. The diff engine,
+failure clustering, CI gate, and dashboard are not yet built. For the full
+requirement-by-requirement breakdown, known blockers (a live target corpus,
+a `ragas` dependency mismatch, real human calibration labels), and the
+build order, see `docs/GAP_ANALYSIS.md` and `docs/ARCHITECTURE.md`.
 
 ## Docs
 
-Everything under `docs/` (plus root `CLAUDE.md` and `calibration/calibration_report.md`) is **gitignored on purpose** — local working notes, not part of the public repo history. They still exist on disk in any checkout that generated them; a fresh `git clone` won't have them.
+Everything under `docs/` (plus root `CLAUDE.md` and
+`calibration/calibration_report.md`) is gitignored — local working notes,
+present on disk in any checkout that generated them but not part of the
+public repo history.
 
-- `docs/PRD.md` — product requirements: goals, personas, functional requirements, success metrics, v1/v2 scope split
-- `docs/PLAN.md` — technical architecture, tech-stack rationale, week-by-week build plan
-- `docs/ARCHITECTURE.md` — the system **as it actually exists today**: current-vs-planned status table, real tech stack, directory guide, key contracts, env vars, build/test commands
-- `docs/FUTURE_INITIATIVES.md` — itemized v2/future scope, deliberately deferred past v1
-- `docs/adr/` — architecture decision records for every point where the code deviates from PLAN.md (e.g. SQLite instead of Postgres for now, in-process ringo integration instead of HTTP, deferring Langfuse)
-- `docs/writeup.md` — stub for the eventual portfolio write-up
-- `calibration/calibration_report.md` — stub for the judge calibration study (the project's critical-path deliverable, not started yet)
+- `docs/PRD.md` — product requirements: goals, personas, functional requirements, scope
+- `docs/PLAN.md` — technical architecture, tech-stack rationale, build plan
+- `docs/ARCHITECTURE.md` — the system as it actually exists: status table, directory guide, key contracts
+- `docs/GAP_ANALYSIS.md` — production-readiness gap matrix and build order
+- `docs/FUTURE_INITIATIVES.md` — itemized v2/future scope
+- `docs/adr/` — architecture decision records
+- `examples/adapters/README.md` — how to plug in your own pipeline (tracked — part of the public example, not a working note)
 
-## Tech stack (current, see docs/ARCHITECTURE.md for full rationale)
+## Tech stack
 
-Typer (CLI) · Pydantic v2 (schema validation) · SQLAlchemy 2.0 + Alembic (storage, SQLite by default) · pytest (tests). RAGAS, a Groq-backed judge, `sentence-transformers` + HDBSCAN (clustering), and Streamlit (dashboard) are declared as optional dependency groups in `pyproject.toml` but not yet used by any code.
+Typer (CLI) · Pydantic v2 (schema validation) · SQLAlchemy 2.0 + Alembic
+(storage) · Groq (LLM judge) · `sentence-transformers` (embedding
+similarity) · RAGAS (RAG metrics) · HDBSCAN + Streamlit (clustering,
+dashboard — planned). See `docs/ARCHITECTURE.md` for the full rationale.
