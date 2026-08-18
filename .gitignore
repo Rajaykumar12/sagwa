@@ -6,5 +6,10 @@ __pycache__/
 .env
 *.egg-info/
 sagwa.db
-graphify-out/cache/
+graphify-out/
 .DS_Store
+
+# Only README.md is tracked as public-facing docs; everything else in
+# Markdown (PRD/PLAN/ADRs/ARCHITECTURE/etc.) is local-only working notes.
+*.md
+!README.md
