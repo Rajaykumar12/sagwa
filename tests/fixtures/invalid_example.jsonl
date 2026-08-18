@@ -1,0 +1,4 @@
+{"id": "bad-001", "input": "Missing task_type"}
+not even json
+{"id": "dup-001", "input": "first occurrence", "task_type": "rag_qa"}
+{"id": "dup-001", "input": "second occurrence", "task_type": "rag_qa"}

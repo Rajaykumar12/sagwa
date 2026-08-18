@@ -1,0 +1,3 @@
+{"id": "ex-001", "input": "What is the capital of France?", "expected_output": "Paris", "task_type": "rag_qa", "tags": ["geography"]}
+{"id": "ex-002", "input": "Summarize: The quick brown fox jumps over the lazy dog.", "expected_output": "A fox jumps over a dog.", "task_type": "summarization", "tags": ["short"]}
+{"id": "ex-003", "input": "Is this review positive or negative: 'I loved it!'", "expected_labels": ["positive"], "task_type": "classification", "tags": ["sentiment"]}
