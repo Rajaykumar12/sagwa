@@ -1,6 +1,12 @@
-# CI gate (PRD FR-23, FR-24). PLACEHOLDER — `sagwa gate` isn't implemented
-# yet (see PLAN.md §9, Week 9-10); this workflow documents the intended shape
-# but does not run a real gate check.
+# CI gate (PRD FR-23, FR-24). Runs `sagwa run` against the `stub` target
+# and gates the result against `config/gates.yaml`.
+#
+# CAVEAT (see docs/GAP_ANALYSIS.md): no real target pipeline is CI-ready
+# yet — `ringo`'s adapter is implemented but unvalidated against a live
+# instance (no document corpus loaded, no GROQ_API_KEY in this environment
+# by default). Gating against `stub` proves the plumbing (run -> gate ->
+# pass/fail exit code -> PR comment) end-to-end, but is NOT a real
+# regression check until a real target + golden set are wired in here.
 name: eval-gate
 
 on:
@@ -11,7 +17,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: TODO - not implemented yet
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install sagwa
+        run: pip install -e ".[metrics]"
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Run eval
+        id: run
         run: |
-          echo "sagwa gate is not implemented yet — see PLAN.md §9 (Week 9-10)"
-          exit 0
+          run_output=$(sagwa run --target stub --dataset golden_sets/example.jsonl)
+          echo "$run_output"
+          run_id=$(echo "$run_output" | grep -oP '(?<=^Run )[a-f0-9-]+')
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - name: Gate
+        id: gate
+        run: |
+          sagwa gate --run-id "${{ steps.run.outputs.run_id }}" --json gate_result.json
+        continue-on-error: true
+      - name: Post gate result as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const result = JSON.parse(fs.readFileSync('gate_result.json', 'utf8'));
+            const status = result.passed ? '✅ PASSED' : '❌ FAILED';
+            let body = `## Gate result for run \`${result.run_id}\`: ${status}\n\n`;
+            body += '| metric | op | threshold | observed | passed |\n|---|---|---|---|---|\n';
+            for (const m of result.metric_results) {
+              const observed = m.observed !== null ? m.observed.toFixed(3) : 'n/a';
+              body += `| ${m.metric_name} | ${m.op} | ${m.threshold} | ${observed} | ${m.passed ? '✅' : '❌'} |\n`;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+      - name: Fail the check if the gate failed
+        if: steps.gate.outcome == 'failure'
+        run: exit 1
