@@ -7,13 +7,22 @@ GROQ_API_KEY — reusing the same provider ringo's own `backend/eval.py`
 uses, which is what keeps the calibration head-to-head comparison
 apples-to-apples (PRD FR-15a, PLAN.md §5).
 
-Known current blocker (see docs/GAP_ANALYSIS.md): `ragas==0.4.3` fails to
-import in this project's `.venv` — it reaches for
-`langchain_community.chat_models.vertexai`, which doesn't exist in the
-installed `langchain-community==0.4.2`. That's a dependency-pinning
-mismatch to resolve (upgrade/downgrade one side), not something this
-module can work around, so every metric here degrades to `None` with an
-`_error` string rather than crashing the case's other metrics.
+Previously blocked (see docs/GAP_ANALYSIS.md), now fixed: `ragas==0.4.3`
+unconditionally imports `ChatVertexAI` from
+`langchain_community.chat_models.vertexai` at module load, a module
+`langchain-community` removed as of `0.4.x` while sunsetting legacy
+provider integrations — `ragas` declares no version bound on
+`langchain-community`, so an unpinned install grabbed the latest and
+broke. Fixed by pinning `langchain-community<0.4` in `pyproject.toml`'s
+`metrics` extra (resolves to `0.3.31`, which still has the module and is
+compatible with everything else installed). Live-verified end-to-end
+against Groq (2026-08-19): real faithfulness/context-precision scores
+returned, not just an import that succeeds.
+
+Every metric here still degrades to `None` with an `_error` string on any
+failure (missing `GROQ_API_KEY`, a future API change, etc.) rather than
+crashing the case's other metrics — that fallback behavior is unrelated
+to the import bug above and stays regardless.
 """
 from __future__ import annotations
 
@@ -35,13 +44,15 @@ def _get_judge_llm():
         # default) is no longer viable. reasoning_effort="low" matters for
         # the same reason it does there: gpt-oss models spend max_tokens on
         # hidden reasoning first, so a low-effort setting is needed to get
-        # a usable score back within any reasonable token budget. Untested
-        # end-to-end here — `ragas` itself fails to import, see module
-        # docstring — but kept consistent with the path that is verified.
+        # a usable score back within any reasonable token budget. Passed as
+        # its own field, not inside model_kwargs — the installed
+        # langchain-groq (1.1.3) promoted reasoning_effort to a first-class
+        # ChatGroq field and rejects it inside model_kwargs with a
+        # pydantic validation error. Verified live against Groq.
         chat = ChatGroq(
             model="openai/gpt-oss-20b",
             api_key=os.environ["GROQ_API_KEY"],
-            model_kwargs={"reasoning_effort": "low"},
+            reasoning_effort="low",
         )
         _judge_llm = LangchainLLMWrapper(chat)
     return _judge_llm
