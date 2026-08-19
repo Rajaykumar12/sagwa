@@ -1,9 +1,16 @@
-# CI gate thresholds (PRD FR-25). Read by `sagwa gate` (not implemented yet —
-# see PLAN.md §9, Week 9-10). Per-metric operators: gt, gte, lt, lte.
 metrics:
-  faithfulness:
+  safety.pii.flagged:
+    op: lte
+    value: 0.0
+  safety.toxicity.flagged:
+    op: lte
+    value: 0.0
+  judge.score:
+    op: gte
+    value: 0.6
+  ragas.faithfulness:
     op: gte
     value: 0.85
-  context_precision:
+  ragas.context_precision:
     op: gte
     value: 0.80
