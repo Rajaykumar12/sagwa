@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.13",
     "typer>=0.12",
     "python-dotenv>=1.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -18,7 +19,20 @@ dependencies = [
 postgres = ["psycopg[binary]>=3.1"]
 # Week 5-6: RAGAS reference-free RAG metrics + Groq-backed LLM judge harness.
 # sentence-transformers also backs reference-based embedding similarity (FR-8).
-metrics = ["ragas>=0.1", "langchain-groq>=0.1", "sentence-transformers>=3.0"]
+# scipy backs sagwa diff's bootstrap CI / McNemar's test (FR-18) — declared
+# here, not under `clustering`, so `sagwa diff` doesn't need to pull in
+# hdbscan/hierarchical-clustering deps it has no use for.
+#
+# langchain-community pinned <0.4: ragas==0.4.3's `ragas/llms/base.py`
+# unconditionally imports `ChatVertexAI` from
+# `langchain_community.chat_models.vertexai` at module load — a module
+# langchain-community removed as of 0.4.x while sunsetting legacy provider
+# integrations (see its own DeprecationWarning). ragas declares no version
+# bound on langchain-community, so an unpinned install grabs the latest
+# (0.4.x) and breaks. 0.3.31 (last pre-0.4 release) still has that module
+# and resolves cleanly against everything else here (langchain 1.3.x,
+# langchain-core, langgraph) — verified via `pip install --dry-run`.
+metrics = ["ragas>=0.1", "langchain-community<0.4", "langchain-groq>=0.1", "sentence-transformers>=3.0", "scipy>=1.13"]
 # Week 7-8: HDBSCAN failure clustering + stat-sig diff testing.
 clustering = ["sentence-transformers>=3.0", "hdbscan>=0.8", "scipy>=1.13"]
 # Week 11: trend/cluster-browser dashboard.
