@@ -36,23 +36,18 @@ def rouge_l_f1(output: str, expected: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
-_embedding_model = None
-
-
 def embedding_similarity(output: str, expected: str) -> float | None:
     """Cosine similarity between sentence-transformer embeddings, in [-1, 1].
     Returns `None` — not 0.0, which would misreport as "completely
     dissimilar" — if `sentence-transformers` isn't installed."""
-    global _embedding_model
-    try:
-        if _embedding_model is None:
-            from sentence_transformers import SentenceTransformer
+    from sagwa._embedding import get_embedding_model
 
-            _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    try:
+        model = get_embedding_model()
     except ImportError:
         return None
 
-    vectors = _embedding_model.encode([output, expected])
+    vectors = model.encode([output, expected])
     return _cosine(vectors[0], vectors[1])
 
 
