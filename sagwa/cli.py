@@ -1,6 +1,7 @@
 """`sagwa run|diff|gate` — see PRD.md §5.3, §5.6, §5.8."""
 import hashlib
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -12,6 +13,9 @@ import typer
 from sagwa.adapters.base import TargetAdapter
 from sagwa.adapters.stub import StubAdapter
 from sagwa.datasets import DatasetError, load_golden_set
+from sagwa.clustering import cluster_run
+from sagwa.diff import diff_runs, format_table
+from sagwa.gate import GateConfigError, evaluate_gate, load_gate_config
 from sagwa.metrics import compute_metrics
 from sagwa.runner import run_cases
 from sagwa.storage import Result, Run, get_session
@@ -177,20 +181,97 @@ def _run_model_label(adapter: TargetAdapter) -> str:
 def diff(
     baseline: str = typer.Option(..., help="Baseline run id"),
     candidate: str = typer.Option(..., help="Candidate run id"),
+    gates_config: Path = typer.Option(
+        Path("config/gates.yaml"), help="Gate thresholds config, also used as the pass/fail definition for flips"
+    ),
+    output_json: Path = typer.Option(None, "--json", help="Write machine-readable JSON here (PRD FR-19)"),
 ):
-    """Diff two runs (PRD FR-16..FR-19). Not implemented yet — see PLAN.md §9 (Week 7-8)."""
-    typer.echo("sagwa diff: not implemented yet — see PLAN.md §9 (Week 7-8)")
-    raise typer.Exit(1)
+    """Diff two runs (PRD FR-16..FR-19)."""
+    with get_session() as session:
+        if session.get(Run, baseline) is None:
+            typer.echo(f"Unknown baseline run id: {baseline}")
+            raise typer.Exit(1)
+        if session.get(Run, candidate) is None:
+            typer.echo(f"Unknown candidate run id: {candidate}")
+            raise typer.Exit(1)
+
+        try:
+            gates = load_gate_config(gates_config) if gates_config.exists() else {}
+        except GateConfigError as e:
+            typer.echo(str(e))
+            raise typer.Exit(1)
+
+        result = diff_runs(session, baseline, candidate, gates_config=gates)
+
+    typer.echo(format_table(result))
+    if output_json is not None:
+        output_json.write_text(json.dumps(result.to_dict(), indent=2))
 
 
 @app.command()
 def gate(
     run_id: str = typer.Option(..., help="Run id to gate"),
     config: Path = typer.Option(Path("config/gates.yaml"), help="Gate thresholds config"),
+    output_json: Path = typer.Option(None, "--json", help="Write machine-readable JSON here"),
 ):
-    """Gate a run against configured thresholds (PRD FR-23..FR-25). Not implemented yet — see PLAN.md §9 (Week 9-10)."""
-    typer.echo("sagwa gate: not implemented yet — see PLAN.md §9 (Week 9-10)")
-    raise typer.Exit(1)
+    """Gate a run against configured thresholds (PRD FR-23..FR-25)."""
+    try:
+        gates = load_gate_config(config)
+    except GateConfigError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+
+    with get_session() as session:
+        if session.get(Run, run_id) is None:
+            typer.echo(f"Unknown run id: {run_id}")
+            raise typer.Exit(1)
+        result = evaluate_gate(session, run_id, gates)
+
+    typer.echo(result.to_markdown())
+    if output_json is not None:
+        output_json.write_text(json.dumps(result.to_dict(), indent=2))
+    if not result.passed:
+        raise typer.Exit(1)
+
+
+@app.command()
+def cluster(
+    run_id: str = typer.Option(..., help="Run id to cluster failing cases for"),
+    gates_config: Path = typer.Option(Path("config/gates.yaml"), help="Gate thresholds config (pass/fail definition)"),
+    min_cluster_size: int = typer.Option(3, help="HDBSCAN min_cluster_size (PRD FR-20)"),
+    output_json: Path = typer.Option(None, "--json", help="Write machine-readable JSON here"),
+):
+    """Cluster a run's failing cases and auto-label each cluster (PRD FR-20..FR-22)."""
+    if min_cluster_size < 2:
+        typer.echo(f"--min-cluster-size must be >= 2 (a single case isn't a cluster), got {min_cluster_size}")
+        raise typer.Exit(1)
+
+    try:
+        gates = load_gate_config(gates_config) if gates_config.exists() else {}
+    except GateConfigError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+
+    with get_session() as session:
+        if session.get(Run, run_id) is None:
+            typer.echo(f"Unknown run id: {run_id}")
+            raise typer.Exit(1)
+        clusters = cluster_run(session, run_id, gates_config=gates, min_cluster_size=min_cluster_size)
+
+    if not clusters:
+        typer.echo(f"No failing cases found for run {run_id} (per {gates_config}).")
+    for c in clusters:
+        typer.echo(f"[{c.cluster_id}] size={c.size} label={c.label!r} cases={c.case_ids}")
+
+    if output_json is not None:
+        output_json.write_text(json.dumps([c.to_dict() for c in clusters], indent=2))
+
+
+@app.command()
+def dashboard(port: int = typer.Option(8501, help="Port to serve the Streamlit dashboard on")):
+    """Launch the Streamlit dashboard (PRD FR-26..FR-28)."""
+    app_path = Path(__file__).parent / "dashboard" / "app.py"
+    subprocess.run(["streamlit", "run", str(app_path), "--server.port", str(port)])
 
 
 if __name__ == "__main__":
