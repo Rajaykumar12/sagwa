@@ -82,6 +82,22 @@ def score_absolute(
     return _parse_score(llm_call(prompt))
 
 
+def score_absolute_with_rationale(
+    llm_call: LLMCall,
+    query: str,
+    answer: str,
+    rubric: str = DEFAULT_RUBRIC,
+) -> tuple[float | None, str]:
+    """Same as `score_absolute`, but also returns the judge's raw
+    completion text (PRD FR-28 — dashboard drill-down wants the rationale,
+    not just the parsed number). A separate function rather than changing
+    `score_absolute`'s return shape, so existing callers/tests of the
+    plain scorer are untouched."""
+    prompt = _ABSOLUTE_PROMPT.format(query=query, answer=answer, rubric=rubric)
+    raw = llm_call(prompt)
+    return _parse_score(raw), raw
+
+
 def score_pairwise(
     llm_call: LLMCall,
     query: str,
