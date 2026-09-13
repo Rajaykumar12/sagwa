@@ -36,7 +36,7 @@ def _load_adapter_class(target: str) -> Callable[[], TargetAdapter]:
     `module.path:ClassName` string pointing at any class implementing
     `TargetAdapter` (PRD FR-3a — "zero required changes to the target's own
     codebase" cuts both ways: zero required changes to Sagwa's, either).
-    See examples/adapters/README.md for a worked example (ringo)."""
+    See examples/adapters/README.md for a worked example."""
     if target in BUILTIN_ADAPTERS:
         return BUILTIN_ADAPTERS[target]
     if ":" not in target:
@@ -99,8 +99,8 @@ def run(
         raise typer.Exit(1)
     except KeyError as e:
         # A custom adapter's __init__ reading a required env var directly
-        # (as the ringo example does) raises a bare KeyError if it's unset —
-        # translate that into an actionable message rather than a stack trace.
+        # raises a bare KeyError if it's unset — translate that into an
+        # actionable message rather than a stack trace.
         typer.echo(f"Missing required environment variable for target '{target}': {e}")
         raise typer.Exit(1)
 

@@ -2,11 +2,10 @@
 # and gates the result against `config/gates.yaml`.
 #
 # CAVEAT (see docs/GAP_ANALYSIS.md): no real target pipeline is CI-ready
-# yet — `ringo`'s adapter is implemented but unvalidated against a live
-# instance (no document corpus loaded, no GROQ_API_KEY in this environment
-# by default). Gating against `stub` proves the plumbing (run -> gate ->
-# pass/fail exit code -> PR comment) end-to-end, but is NOT a real
-# regression check until a real target + golden set are wired in here.
+# yet (no GROQ_API_KEY in this environment by default). Gating against
+# `stub` proves the plumbing (run -> gate -> pass/fail exit code ->
+# PR comment) end-to-end, but is NOT a real regression check until a real
+# target + golden set are wired in here.
 name: eval-gate
 
 on:

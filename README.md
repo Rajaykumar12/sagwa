@@ -29,7 +29,6 @@ Sagwa closes that gap. It is not another AI app, it's testing and observability 
 | Reference-based, classification, and safety metrics | Exact/fuzzy match, ROUGE-L, embedding similarity (where a reference string exists); set-based precision/recall/F1 and exact-set-match (where `expected_labels` exists); PII-regex and toxicity-keyword flags on every case | Built and tested |
 | LLM-as-judge harness | Absolute and pairwise scoring modes, wired into `sagwa run` itself (every case gets a judge score plus the judge's raw rationale text, not just reference metrics), live-verified against Groq | Built and tested |
 | Judge calibration engine | Cohen's kappa, confusion matrix, versioned calibration artifacts, refusal-to-gate below a kappa threshold, and a baseline-comparison mode (for scoring a prior judge against the same human labels) | Built and tested against a synthetic fixture; real ~150-200-case human study not yet run |
-| ringo reference adapter | Example adapter (`examples/adapters/ringo_adapter.py`) calling ringo's `pipeline.py` in-process (not HTTP, ringo's endpoint strips `context`, which faithfulness metrics need) | Implemented; not yet run against a live instance from this repo |
 | RAGAS metrics (faithfulness, context precision) | Wraps RAGAS for reference-free RAG scoring | Built and live-verified against Groq (a `ragas`/`langchain-community` version pin resolved the prior import failure) |
 | `sagwa diff` | Per-metric/per-tag regression detection: paired bootstrap CI for continuous metrics, exact McNemar's for binary metrics, plus a case-level pass/fail flip list, CLI table and `--json` output | Built and tested |
 | Failure clustering | Embeds failing cases, HDBSCAN clusters them, auto-labels each cluster via the judge harness (keyword fallback with no `GROQ_API_KEY`) | Built and tested; `min_cluster_size` default is provisional pending a real-scale golden set |
@@ -66,7 +65,7 @@ Metrics are computed per case from the `AdapterResult` (`compute_metrics()`, `sa
 
 From there, `sagwa diff` (`sagwa/diff/`) compares two runs' `Result` rows; `sagwa gate` (`sagwa/gate/`) evaluates one run's aggregate metrics against `config/gates.yaml`; `sagwa cluster` (`sagwa/clustering/`) groups a run's failing cases; `sagwa dashboard` (`sagwa/dashboard/`) renders trends and the cluster browser. All four only ever read `Result` rows, none of them touch a target pipeline's code.
 
-`sagwa/cli.py` has no hardcoded knowledge of any specific target pipeline, the only built-in adapter is `stub`. Everything else is resolved by importing a `module.path:ClassName` string at runtime, with the caller's working directory added to `sys.path` first (the way `python -m` would resolve it). This is what lets a completely separate project (for example, ringo) become a target pipeline with zero changes to either codebase.
+`sagwa/cli.py` has no hardcoded knowledge of any specific target pipeline, the only built-in adapter is `stub`. Everything else is resolved by importing a `module.path:ClassName` string at runtime, with the caller's working directory added to `sys.path` first (the way `python -m` would resolve it). This is what lets a completely separate project become a target pipeline with zero changes to either codebase.
 
 ### Directory guide
 
@@ -82,7 +81,7 @@ From there, `sagwa diff` (`sagwa/diff/`) compares two runs' `Result` rows; `sagw
 - `sagwa/clustering/`: HDBSCAN failure clustering with LLM/keyword auto-labeling
 - `sagwa/dashboard/`: `queries.py` (unit-tested query layer) plus `app.py` (Streamlit rendering)
 - `sagwa/_embedding.py`: shared lazy `sentence-transformers` model loader, used by both `metrics/reference.py` and `clustering/`
-- `examples/adapters/`: reference adapter implementations, kept outside `sagwa/` since they are worked examples, not core library code (includes a README on plugging in any ML project as a target pipeline, and the ringo integration itself)
+- `examples/adapters/`: reference adapter implementations, kept outside `sagwa/` since they are worked examples, not core library code (includes a README on plugging in any ML project as a target pipeline)
 - `golden_sets/`: versioned golden-set JSONL files
 - `migrations/`: Alembic migrations for the run-history schema
 - `calibration/`: judge calibration study artifacts
@@ -102,7 +101,7 @@ From there, `sagwa diff` (`sagwa/diff/`) compares two runs' `Result` rows; `sagw
 | `GROQ_API_KEY` | LLM-as-judge (`sagwa/judge/`, called from `sagwa run` and `sagwa cluster`'s auto-labeling) and RAGAS (`sagwa/metrics/ragas_metrics.py`) | The only external API this project calls directly. Judge scoring and RAGAS both degrade gracefully (omitted or `None`, not a crash) when unset. |
 | `DATABASE_URL` | Storage | Defaults to `sqlite:///./sagwa.db`. Swap for a Postgres DSN to switch stores; the schema is database-agnostic. |
 
-Target-pipeline-specific variables (for example, `RINGO_REPO_PATH` for the example ringo adapter) are not Sagwa core config; each adapter owns and documents its own env vars. See `examples/adapters/README.md`.
+Target-pipeline-specific variables (e.g. a repo path or API key your own adapter needs) are not Sagwa core config; each adapter owns and documents its own env vars. See `examples/adapters/README.md`.
 
 ## Quickstart / Installation
 
@@ -161,10 +160,10 @@ Example, bundled stub adapter:
 sagwa run --target stub --dataset golden_sets/example.jsonl
 ```
 
-Example, a custom adapter such as ringo:
+Example, a custom adapter:
 
 ```bash
-sagwa run --target examples.adapters.ringo_adapter:RingoAdapter --dataset golden_sets/example.jsonl
+sagwa run --target your_module.path:YourAdapterClass --dataset golden_sets/example.jsonl
 ```
 
 ### Integrating your own application
@@ -242,7 +241,7 @@ sagwa run --target my_adapters.support_triage_adapter:SupportTriageAdapter --dat
 
 The module path is resolved the same way `python -m` would, from your current working directory. From here, `sagwa diff`/`sagwa gate`/`sagwa cluster`/`sagwa dashboard` all work exactly as documented above, unchanged, since they only ever operate on the stored `Result` rows, never on your pipeline's own code.
 
-See `examples/adapters/README.md` and `examples/adapters/ringo_adapter.py` for a full worked example against a real external application.
+See `examples/adapters/README.md` for a full worked example against a real external application.
 
 ### `sagwa diff`: compare two runs
 
@@ -304,7 +303,7 @@ The full pipeline is built and tested: golden-set schema/loader, run-history sto
 
 What's left is mostly external to the code, not missing implementation:
 
-- The ringo adapter is implemented but not yet run against a live instance from this repo, no document corpus loaded here, no golden set written for it yet.
+- No adapter has been run against a real, live target pipeline from this repo yet — no golden set has been written for one either.
 - The CI Action gates the bundled `stub` adapter, proving the mechanism (run, gate, exit code, PR comment) rather than catching a real regression, until a real target is wired in.
 - The real ~150-200-case human calibration study, the project's credibility anchor, has not been run yet.
 - `sagwa cluster`'s `min_cluster_size` default is provisional, tuned against toy fixtures rather than a real-scale golden set.
@@ -312,7 +311,7 @@ What's left is mostly external to the code, not missing implementation:
 
 ### Upcoming
 
-- Validate the ringo adapter against a live instance with a real, hand-authored golden set
+- Write and validate a real adapter against a live target instance with a real, hand-authored golden set
 - Run the real judge calibration study (~150-200 human-labeled cases)
 - Wire a real target pipeline into the CI Action, replacing the `stub` demo
 - Write-up, demo video, README polish
@@ -324,7 +323,7 @@ Deferred beyond this scope: online/production traffic evaluation, multi-judge en
 This is currently a solo portfolio/infrastructure project. If you're extending it:
 
 1. Read a module's own docstring before touching it, each was written to point at a specific PRD requirement, not left as a stub by accident.
-2. Treat existing architectural choices (SQLite default, in-process ringo integration, deferred tracing) as deliberate rather than bugs to "fix" without discussion.
+2. Treat existing architectural choices (SQLite default, deferred tracing) as deliberate rather than bugs to "fix" without discussion.
 3. Run `alembic upgrade head` and `pytest` before and after any change.
 4. Open an issue or PR describing the change and its motivation.
 
@@ -332,4 +331,4 @@ This is currently a solo portfolio/infrastructure project. If you're extending i
 
 Licensed under the Apache License 2.0. See `LICENSE`.
 
-Sagwa's primary real-world validation target is ringo, an independently maintained hybrid BM25+semantic RAG chat application, integrated purely through the external `TargetAdapter` contract with no shared code or coupling to its internals.
+Sagwa is designed to evaluate any real-world target pipeline purely through the external `TargetAdapter` contract, with no shared code or coupling to that pipeline's internals.

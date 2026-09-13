@@ -27,8 +27,7 @@ importantly, zero required changes to Sagwa's own source either.
 3. Your adapter owns its own configuration. If it needs an API key, a repo
    path, or anything else, read it from the environment (or accept
    constructor args) inside your own `__init__` — Sagwa's core never needs
-   to know those exist. See `ringo_adapter.py`'s use of `RINGO_REPO_PATH`
-   for the pattern.
+   to know those exist.
 4. Optional attributes Sagwa's CLI will pick up if present, via duck-typing
    (neither is required):
    - `self.repo_path` — if your target is its own git-versioned repo, expose
@@ -37,18 +36,3 @@ importantly, zero required changes to Sagwa's own source either.
      target (e.g. it routes per-query across models/tiers), set a
      human-readable string here instead of leaving the run record's `model`
      field as the default `"n/a"`.
-
-## `ringo_adapter.py`
-
-The reference example: an adapter for [ringo](../../../ringo), the RAG chat
-app used as this project's own real-world validation target (see
-`docs/PRD.md`). It's a genuine worked example, not a toy — read it for the
-in-process-call pattern (vs. calling over HTTP) documented in its module
-docstring and [docs/adr/0003-ringo-adapter-in-process.md](../../docs/adr/0003-ringo-adapter-in-process.md).
-
-Try it (from this repo's root, with `RINGO_REPO_PATH` set and a live ringo
-instance with documents indexed):
-
-```bash
-sagwa run --target examples.adapters.ringo_adapter:RingoAdapter --dataset golden_sets/example.jsonl
-```
