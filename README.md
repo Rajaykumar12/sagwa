@@ -82,7 +82,7 @@ From there, `sagwa diff` (`sagwa/diff/`) compares two runs' `Result` rows; `sagw
 - `sagwa/dashboard/`: `queries.py` (unit-tested query layer) plus `app.py` (Streamlit rendering)
 - `sagwa/_embedding.py`: shared lazy `sentence-transformers` model loader, used by both `metrics/reference.py` and `clustering/`
 - `examples/adapters/`: reference adapter implementations, kept outside `sagwa/` since they are worked examples, not core library code (includes a README on plugging in any ML project as a target pipeline)
-- `golden_sets/`: versioned golden-set JSONL files
+- `golden_sets/`: versioned golden-set JSONL files (`example.jsonl` is a minimal 3-case plumbing check; `demo_synthetic.jsonl` is a 30-case hand-written set spanning all three task types, for a richer worked example)
 - `migrations/`: Alembic migrations for the run-history schema
 - `calibration/`: judge calibration study artifacts
 - `config/gates.yaml`: CI gate thresholds, read by `sagwa gate`/`sagwa diff`/`sagwa cluster` alike
@@ -165,6 +165,8 @@ Example, a custom adapter:
 ```bash
 sagwa run --target your_module.path:YourAdapterClass --dataset golden_sets/example.jsonl
 ```
+
+For a richer worked example spanning all three task types (30 cases, including a few negation/ambiguous/multi-label edge cases), swap in `golden_sets/demo_synthetic.jsonl`.
 
 ### Integrating your own application
 
