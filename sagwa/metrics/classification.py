@@ -17,18 +17,21 @@ project's "hand-roll the simple case, no extra dependency" convention
 from __future__ import annotations
 
 import re
+import string
 
 
 def _normalize_label(label: str) -> str:
-    return re.sub(r"\s+", " ", label.strip().lower())
+    # Edge punctuation is stripped ("Positive." -> "positive"); inner
+    # punctuation ("follow-up") is part of the label and kept.
+    return re.sub(r"\s+", " ", label.strip().strip(string.punctuation).strip().lower())
 
 
 def parse_labels(text: str) -> set[str]:
     """Splits `text` on commas/semicolons/newlines into a normalized label
     set. A plain single-label answer (`"positive"`) parses to a one-element
     set, so single- and multi-label predictions share this same path."""
-    parts = re.split(r"[,;\n]", text)
-    return {_normalize_label(p) for p in parts if p.strip()}
+    labels = (_normalize_label(p) for p in re.split(r"[,;\n]", text))
+    return {label for label in labels if label}
 
 
 def compute_classification_metrics(answer: str, expected_labels: list[str]) -> dict:

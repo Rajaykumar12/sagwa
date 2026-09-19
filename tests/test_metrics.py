@@ -62,3 +62,11 @@ def test_compute_metrics_includes_safety_always_and_reference_when_expected_outp
     case_without_reference = GoldenCase(id="c2", input="Summarize this.", task_type="summarization", tags=[])
     metrics_no_ref = compute_metrics(case_without_reference, answer="A summary.", context=None)
     assert "reference" not in metrics_no_ref
+
+
+def test_reference_metrics_ignore_edge_punctuation_and_case():
+    # A trailing period / capitalization change isn't a different answer.
+    assert exact_match("TOKYO.", "Tokyo") == 1.0
+    assert rouge_l_f1("JANE AUSTEN.", "Jane Austen") == 1.0
+    # Inner punctuation still counts.
+    assert exact_match("300,000 km/s", "300000 kms") == 0.0

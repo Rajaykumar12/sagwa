@@ -41,12 +41,16 @@ _CONTINUOUS_METRIC_PATHS = (
     "reference.fuzzy_match",
     "reference.rouge_l_f1",
     "reference.embedding_similarity",
+    "classification.precision",
+    "classification.recall",
+    "classification.f1",
     "ragas.faithfulness",
     "ragas.context_precision",
     "judge.score",
 )
 _BINARY_METRIC_PATHS = (
     "reference.exact_match",
+    "classification.exact_set_match",
     "safety.pii.flagged",
     "safety.toxicity.flagged",
 )

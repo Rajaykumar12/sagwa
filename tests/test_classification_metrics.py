@@ -52,3 +52,10 @@ def test_compute_metrics_omits_classification_key_without_expected_labels():
     case = GoldenCase(id="c2", input="Summarize this.", task_type="summarization", tags=[])
     metrics = compute_metrics(case, answer="A summary.", context=None)
     assert "classification" not in metrics
+
+
+def test_parse_labels_strips_edge_punctuation_but_keeps_inner():
+    assert parse_labels("POSITIVE.") == {"positive"}
+    assert parse_labels("billing, urgent!") == {"billing", "urgent"}
+    assert parse_labels("follow-up") == {"follow-up"}
+    assert parse_labels(".") == set()

@@ -5,7 +5,7 @@ have one — no ground truth means no reference-based score, not a 0.0.
 from __future__ import annotations
 
 import difflib
-import re
+import string
 
 
 def exact_match(output: str, expected: str) -> float:
@@ -65,7 +65,11 @@ def compute_reference_metrics(output: str, expected: str) -> dict:
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
+    # Edge punctuation is stripped per token ("Tokyo." -> "tokyo") so a
+    # trailing period isn't scored as a different word; inner punctuation
+    # ("300,000", "km/s") is kept since it can carry meaning.
+    tokens = (token.strip(string.punctuation) for token in text.lower().split())
+    return " ".join(token for token in tokens if token)
 
 
 def _tokenize(text: str) -> list[str]:

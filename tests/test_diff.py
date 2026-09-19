@@ -124,3 +124,15 @@ def test_diff_runs_end_to_end():
                     for r in list(run_row.results):
                         session.delete(r)
                     session.delete(run_row)
+
+
+def test_diff_reports_classification_metrics():
+    from sagwa.diff import _BINARY_METRIC_PATHS, _CONTINUOUS_METRIC_PATHS, _metric_deltas
+
+    classification = {"exact_set_match": 1.0, "precision": 1.0, "recall": 1.0, "f1": 1.0}
+    baseline = [_make_result("b", "1", {"classification": classification})]
+    candidate = [_make_result("c", "1", {"classification": {k: 0.0 for k in classification}})]
+
+    deltas = {m.metric_name: m for m in _metric_deltas(_CONTINUOUS_METRIC_PATHS + _BINARY_METRIC_PATHS, baseline, candidate)}
+    assert deltas["classification.f1"].delta == pytest.approx(-1.0)
+    assert deltas["classification.exact_set_match"].test == "mcnemar"
