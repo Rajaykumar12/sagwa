@@ -1,6 +1,6 @@
 import pytest
 
-from sagwa.diff import bootstrap_ci, case_passes, diff_runs, mcnemar_exact
+from sagwa.diff import _metric_deltas, bootstrap_ci, case_passes, diff_runs, mcnemar_exact
 from sagwa.datasets.schema import GoldenCase
 from sagwa.storage import Result, Run, get_session
 
@@ -136,3 +136,22 @@ def test_diff_reports_classification_metrics():
     deltas = {m.metric_name: m for m in _metric_deltas(_CONTINUOUS_METRIC_PATHS + _BINARY_METRIC_PATHS, baseline, candidate)}
     assert deltas["classification.f1"].delta == pytest.approx(-1.0)
     assert deltas["classification.exact_set_match"].test == "mcnemar"
+
+
+def test_metric_deltas_skip_nan_pairs():
+    # RAGAS returns NaN for an unscoreable case; one NaN in either run must not
+    # turn the paired comparison into nan (real HotpotQA diff, 2026-09-22).
+    baseline = [
+        _make_result("b", "1", {"ragas": {"faithfulness": 0.9}}),
+        _make_result("b", "2", {"ragas": {"faithfulness": float("nan")}}),
+        _make_result("b", "3", {"ragas": {"faithfulness": 0.7}}),
+    ]
+    candidate = [
+        _make_result("c", "1", {"ragas": {"faithfulness": 0.3}}),
+        _make_result("c", "2", {"ragas": {"faithfulness": 0.4}}),
+        _make_result("c", "3", {"ragas": {"faithfulness": 0.1}}),
+    ]
+    delta = _metric_deltas(("ragas.faithfulness",), baseline, candidate)[0]
+    assert delta.n == 2
+    assert delta.baseline_mean == pytest.approx(0.8)
+    assert delta.candidate_mean == pytest.approx(0.2)

@@ -18,6 +18,7 @@ definition diff, gate, and clustering all use — not gate-only config.
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -175,6 +176,11 @@ def mcnemar_exact(baseline_binary: list[bool], candidate_binary: list[bool]) -> 
     return p_value, bool(p_value < 0.05)
 
 
+def _is_scored(value) -> bool:
+    """A metric value that can be averaged: present, and not NaN."""
+    return value is not None and not math.isnan(float(value))
+
+
 def _metric_deltas(
     metric_paths: tuple[str, ...],
     baseline_results: list[Result],
@@ -186,7 +192,14 @@ def _metric_deltas(
             (_get_metric(b, metric_name), _get_metric(c, metric_name))
             for b, c in zip(baseline_results, candidate_results)
         ]
-        pairs = [(b, c) for b, c in pairs if b is not None and c is not None]
+        # A pair is usable only when BOTH runs scored the case. NaN counts as
+        # unscored, not as a value: RAGAS returns NaN for a case it can't score
+        # (faithfulness of "I don't know" has no claims to check), and one NaN
+        # in either run turns the whole paired comparison into nan — which the
+        # 2026-09-22 HotpotQA diff reported as `nan, significant=False`,
+        # silently voiding the one metric the regression was clearest on.
+        # Same reading as `sagwa.gate.aggregate_metric`.
+        pairs = [(b, c) for b, c in pairs if _is_scored(b) and _is_scored(c)]
         if not pairs:
             continue
 
