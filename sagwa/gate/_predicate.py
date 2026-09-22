@@ -9,6 +9,8 @@ which is gate's own vocabulary.
 """
 from __future__ import annotations
 
+import math
+
 from sagwa.gate import _compare
 from sagwa.storage import Result
 
@@ -36,7 +38,10 @@ def case_passes(result: Result, gates: dict) -> bool | None:
     saw_any = False
     for metric_name, rule in gates.items():
         observed = _get_metric(result, metric_name)
-        if observed is None:
+        # NaN is "couldn't be scored", not a value — same reading as
+        # `sagwa.gate.aggregate_metric`, so a NaN metric doesn't silently
+        # fail the case here while being skipped in the run-level mean.
+        if observed is None or math.isnan(float(observed)):
             continue
         saw_any = True
         if not _compare(float(observed), rule["op"], float(rule["value"])):

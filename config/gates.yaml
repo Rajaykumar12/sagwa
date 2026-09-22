@@ -14,3 +14,12 @@ metrics:
   ragas.context_precision:
     op: gte
     value: 0.80
+# Optional: baseline-relative gating, used only when `sagwa gate --baseline
+# <run_id>` is passed. A metric fails when its change from the baseline is
+# statistically significant AND in the bad direction (direction is taken from
+# each metric's own `op` above). Delete this section and the gate behaves
+# exactly as it did before: absolute thresholds only.
+regression:
+  # Ignore changes smaller than this even when significant — with enough
+  # cases, a trivially small drop can still be statistically significant.
+  tolerance: 0.02

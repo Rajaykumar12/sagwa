@@ -15,7 +15,7 @@ from sagwa.adapters.stub import StubAdapter
 from sagwa.datasets import DatasetError, load_golden_set
 from sagwa.clustering import cluster_run
 from sagwa.diff import diff_runs, format_table
-from sagwa.gate import GateConfigError, evaluate_gate, load_gate_config
+from sagwa.gate import GateConfigError, evaluate_gate, load_gate_config, load_regression_config
 from sagwa.metrics import compute_metrics
 from sagwa.runner import run_cases
 from sagwa.storage import Result, Run, get_session
@@ -295,7 +295,11 @@ def gate(
         if session.get(Run, run_id) is None:
             typer.echo(f"Unknown run id: {run_id}")
             raise typer.Exit(1)
-        result = evaluate_gate(session, run_id, gates)
+        if baseline is not None and session.get(Run, baseline) is None:
+            typer.echo(f"Unknown baseline run id: {baseline}")
+            raise typer.Exit(1)
+        result = evaluate_gate(session, run_id, gates, baseline_run_id=baseline,
+                               regression_config=regression_config)
 
     typer.echo(result.to_markdown())
     if output_json is not None:
