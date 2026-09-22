@@ -32,7 +32,9 @@ def compute_metrics(case: GoldenCase, answer: str, context: str | None) -> dict:
 
     from sagwa.metrics.judge_metrics import compute_judge_metric
 
-    judge = compute_judge_metric(query=case.input, answer=answer)
+    judge = compute_judge_metric(
+        query=case.input, answer=answer, expected=case.expected_output, context=context
+    )
     if judge is not None:
         metrics["judge"] = judge
 

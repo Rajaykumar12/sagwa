@@ -2,7 +2,7 @@
 small, deliberately-synthetic fixture (10 labels). This validates the
 *mechanism* only — it is not a real calibration result and must never be
 cited as one. The real PRD-required calibration (~150-200 hand-labeled
-cases, FR-13) is tracked separately in docs/GAP_ANALYSIS.md.
+cases, FR-13) is tracked separately in docs/STATUS.md.
 """
 import pytest
 

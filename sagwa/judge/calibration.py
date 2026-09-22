@@ -4,12 +4,12 @@ Given judge scores/labels and corresponding human labels, computes
 agreement (accuracy, Cohen's kappa) and a confusion matrix; stores the
 result as a versioned artifact tied to a judge prompt version (FR-14);
 refuses to let an uncalibrated (or under-threshold) judge be used for
-gating (FR-15); and supports scoring a prior/external judge — e.g. ringo's
-`backend/eval.py` — against the same human-labeled set for a real
-before/after comparison (FR-15a).
+gating (FR-15); and supports scoring a weaker baseline judge — a naive,
+no-rubric prompt — against the same human-labeled set for a real
+before/after comparison (FR-15a, see docs/adr/0005-...md).
 
 The 150-200 real human labels this is meant to run against are not
-something this module can generate — see docs/GAP_ANALYSIS.md. Tests for
+something this module can generate — see docs/STATUS.md. Tests for
 this module use a small, explicitly-synthetic fixture to validate the math
 and the artifact/refusal plumbing, not to claim a real calibration result.
 """
@@ -87,8 +87,8 @@ def calibrate(
     baseline_name: str | None = None,
 ) -> CalibrationResult:
     """Agreement between `judge_labels` and ground-truth `human_labels`
-    (PRD FR-13). Pass `baseline_name` when scoring a prior judge (e.g.
-    ringo's eval.py) against the same set, for the FR-15a comparison."""
+    (PRD FR-13). Pass `baseline_name` when scoring a baseline judge (e.g.
+    a naive no-rubric prompt) against the same set, for FR-15a."""
     if len(human_labels) != len(judge_labels):
         raise ValueError("human_labels and judge_labels must be the same length")
     n = len(human_labels)
