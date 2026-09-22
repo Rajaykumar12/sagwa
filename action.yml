@@ -1,0 +1,222 @@
+name: "Sagwa eval gate"
+description: "Run a golden set against your LLM pipeline and fail the PR when quality regresses against the default branch."
+author: "Rajay Kumar"
+
+# Usage in another repo (.github/workflows/eval.yml):
+#
+#   on: [push, pull_request]
+#   jobs:
+#     eval:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: actions/checkout@v4
+#         - uses: <owner>/sagwa@v1
+#           with:
+#             target: my_pkg.adapters:MyAdapter
+#             dataset: golden_sets/my_set.jsonl
+#           env:
+#             GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+#
+# How the baseline works: a push to the default branch uploads its run database
+# as the `sagwa-baseline` artifact; a pull_request downloads the most recent one
+# and gates against it. The SQLite file IS the baseline store — no service to
+# run, no schema to migrate anywhere else (see docs/adr/0004). Teams wanting
+# shared history point DATABASE_URL at Postgres instead and skip the artifacts.
+
+inputs:
+  target:
+    description: "Adapter to evaluate: a built-in name, or module.path:ClassName"
+    required: true
+  dataset:
+    description: "Path to the golden-set JSONL file"
+    required: true
+  gates-config:
+    description: "Path to the gate thresholds config"
+    required: false
+    default: "config/gates.yaml"
+  extras:
+    description: "pip extras to install with sagwa"
+    required: false
+    default: "metrics"
+  python-version:
+    required: false
+    default: "3.11"
+  concurrency:
+    description: "Max concurrent adapter calls"
+    required: false
+    default: "5"
+  comment-on-pr:
+    description: "Post the gate + diff as a PR comment"
+    required: false
+    default: "true"
+
+outputs:
+  run-id:
+    description: "The run id produced by this evaluation"
+    value: ${{ steps.run.outputs.run_id }}
+  passed:
+    description: "Whether the gate passed"
+    value: ${{ steps.gate.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install sagwa
+      shell: bash
+      # GITHUB_ACTION_PATH is sagwa's own source tree in both cases: GitHub
+      # checks out the action's repository there when another repo uses it,
+      # and it is the workspace checkout when this repo uses `uses: ./`.
+      # Installing from it needs no network fetch and pins sagwa to the exact
+      # ref the workflow asked for.
+      run: pip install "${GITHUB_ACTION_PATH}[${{ inputs.extras }}]"
+
+    - name: Run migrations
+      shell: bash
+      # `sagwa migrate`, not `alembic upgrade head`: the consuming repo has no
+      # alembic.ini, and the migrations ship inside the installed package.
+      run: sagwa migrate
+
+    # A PR needs main's run database to compare against. Absent (first run ever,
+    # or older than GitHub's 90-day artifact retention), the gate still runs on
+    # absolute thresholds — it says so rather than failing mysteriously.
+    - name: Download baseline (pull_request only)
+      if: github.event_name == 'pull_request'
+      shell: bash
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # download-artifact needs a NUMERIC run id to reach another workflow
+        # run, so find the newest default-branch run that actually published a
+        # baseline — the newest run may have failed before uploading one.
+        DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+        RUN_ID=""
+        for id in $(gh run list --repo "$GITHUB_REPOSITORY" --branch "$DEFAULT_BRANCH" \
+                      --status success --limit 20 --json databaseId --jq '.[].databaseId'); do
+          if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" \
+               --jq '.artifacts[].name' | grep -qx sagwa-baseline; then
+            RUN_ID="$id"; break
+          fi
+        done
+        if [ -z "$RUN_ID" ]; then
+          echo "No sagwa-baseline artifact on $DEFAULT_BRANCH (first run ever, or older than the 90-day retention)."
+          echo "Gating on absolute thresholds only."
+          exit 0
+        fi
+        echo "Baseline from workflow run $RUN_ID"
+        gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name sagwa-baseline
+
+    - name: Evaluate
+      id: run
+      shell: bash
+      run: |
+        sagwa run \
+          --target "${{ inputs.target }}" \
+          --dataset "${{ inputs.dataset }}" \
+          --concurrency "${{ inputs.concurrency }}" \
+          --json sagwa_run.json
+        echo "run_id=$(python -c 'import json;print(json.load(open("sagwa_run.json"))["run_id"])')" >> "$GITHUB_OUTPUT"
+
+    - name: Gate
+      id: gate
+      shell: bash
+      continue-on-error: true
+      run: |
+        BASELINE_ARG=""
+        if [ -f baseline_run_id.txt ]; then
+          BASELINE_ARG="--baseline $(cat baseline_run_id.txt)"
+          echo "Gating against baseline run $(cat baseline_run_id.txt)"
+        else
+          echo "No baseline found — gating on absolute thresholds only."
+        fi
+        # Capture the exit code rather than letting `set -e` end the step here:
+        # the PR comment must still be posted when the gate fails, which is
+        # exactly the case anyone cares about.
+        GATE_STATUS=0
+        sagwa gate --run-id "${{ steps.run.outputs.run_id }}" \
+          --config "${{ inputs.gates-config }}" \
+          $BASELINE_ARG --json gate_result.json || GATE_STATUS=$?
+        if [ "$GATE_STATUS" -eq 0 ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+        fi
+        exit "$GATE_STATUS"
+
+    - name: Diff against baseline
+      if: hashFiles('baseline_run_id.txt') != ''
+      shell: bash
+      continue-on-error: true
+      run: |
+        sagwa diff --baseline "$(cat baseline_run_id.txt)" \
+          --candidate "${{ steps.run.outputs.run_id }}" \
+          --gates-config "${{ inputs.gates-config }}" --json diff_result.json
+
+    - name: Comment on the PR
+      if: github.event_name == 'pull_request' && inputs.comment-on-pr == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const gate = JSON.parse(fs.readFileSync('gate_result.json', 'utf8'));
+          let body = `## Sagwa eval: ${gate.passed ? '✅ PASSED' : '❌ FAILED'}\n\n`;
+          body += '| metric | op | threshold | observed | passed |\n|---|---|---|---|---|\n';
+          for (const m of gate.metric_results) {
+            const observed = m.observed !== null ? m.observed.toFixed(3) : 'n/a';
+            body += `| ${m.metric_name} | ${m.op} | ${m.threshold} | ${observed} | ${m.passed ? '✅' : '❌'} |\n`;
+          }
+          if (gate.baseline_run_id) {
+            body += `\n### vs baseline \`${gate.baseline_run_id}\`\n\n`;
+            body += 'Fails only on a change that is **statistically significant** and in the bad direction.\n\n';
+            body += '| metric | delta | tolerance | passed |\n|---|---|---|---|\n';
+            for (const m of gate.regression_results) {
+              const d = m.observed !== null ? (m.observed >= 0 ? '+' : '') + m.observed.toFixed(3) : 'n/a';
+              body += `| ${m.metric_name} | ${d} | ${m.threshold} | ${m.passed ? '✅' : '❌'} |\n`;
+            }
+          } else {
+            body += '\n_No baseline available — absolute thresholds only._\n';
+          }
+          if (fs.existsSync('diff_result.json')) {
+            const diff = JSON.parse(fs.readFileSync('diff_result.json', 'utf8'));
+            const flips = diff.flips.filter(f => f.direction === 'pass_to_fail');
+            if (flips.length) {
+              body += `\n**${flips.length} case(s) flipped pass → fail:** `;
+              body += flips.slice(0, 10).map(f => `\`${f.case_id}\``).join(', ');
+              if (flips.length > 10) body += `, and ${flips.length - 10} more`;
+              body += '\n';
+            }
+          }
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body,
+          });
+
+    # Only the default branch publishes a baseline — a PR's own run must never
+    # become the thing future PRs are compared against.
+    - name: Publish baseline (default branch only)
+      if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      shell: bash
+      run: echo "${{ steps.run.outputs.run_id }}" > baseline_run_id.txt
+
+    - name: Upload baseline artifact
+      if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      uses: actions/upload-artifact@v4
+      with:
+        name: sagwa-baseline
+        path: |
+          sagwa.db
+          baseline_run_id.txt
+        retention-days: 90
+
+    - name: Fail the check when the gate failed
+      if: steps.gate.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "Sagwa gate failed — see the PR comment for which metrics regressed."
+        exit 1

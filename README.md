@@ -297,6 +297,89 @@ sagwa dashboard [--port 8501]
 
 Launches a Streamlit app: metric trends and cost/latency trends per target pipeline over time, and a failure-cluster browser with per-case drill-down including the judge's rationale text.
 
+## Use Sagwa in your team's repo
+
+Sagwa ships as a GitHub Action. Point it at your adapter and golden set, and
+every PR gets a quality check that compares against your default branch.
+
+```yaml
+# .github/workflows/eval.yml
+name: eval
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read          # needed to read the baseline from main's workflow run
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: <owner>/sagwa@v1
+        with:
+          target: my_pkg.adapters:MyAdapter      # module.path:ClassName
+          dataset: golden_sets/my_set.jsonl
+          gates-config: config/gates.yaml
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+```
+
+You need three things in your repo:
+
+1. **An adapter** — one class with `run(case_input) -> AdapterResult`. Your
+   pipeline needs no changes; see [examples/adapters/README.md](examples/adapters/README.md).
+2. **A golden set** — a JSONL file of `{id, input, expected_output, task_type, tags}`.
+3. **A gate config** — thresholds per metric, plus an optional `regression:`
+   section (see [config/gates.yaml](config/gates.yaml)).
+
+### How the baseline works
+
+A push to your default branch uploads its run database as the `sagwa-baseline`
+artifact. A pull request downloads it and runs `sagwa gate --baseline`, so a
+metric fails when its change is **statistically significant and in the bad
+direction** — not merely different. Fixed thresholds alone can't express
+"worse than main", which is the question a reviewer actually has.
+
+The SQLite file *is* the baseline store: no service to run, nothing to
+provision. Teams that want shared, permanent history point `DATABASE_URL` at
+Postgres instead and skip the artifacts entirely.
+
+**Before the first baseline exists** — and after GitHub expires artifacts at 90
+days — the gate says so and falls back to absolute thresholds rather than
+failing mysteriously.
+
+### Cost and runtime, honestly
+
+Per case, the dominant cost is the metrics, not your pipeline. With RAGAS
+enabled, a 20-case run takes roughly 45 minutes on a free Groq tier, and a
+50-case RAG run consumes about 170K tokens — which is a whole day's budget on
+`gpt-oss-120b`'s free tier (200K/day).
+
+Two knobs, both env vars:
+
+- `SAGWA_RAGAS_METRICS=faithfulness` — compute one RAGAS metric instead of two.
+  Leave it unset for the full set; set it to `""` for none, which makes a
+  50-case run take minutes rather than an hour.
+- `SAGWA_RAGAS_MODEL` — score RAGAS with a different model than the judge, so
+  the two draw on separate per-model rate limits.
+
+A practical split: a small, fast golden set on every PR, and the full set
+nightly or on merges to main.
+
+### Judge trustworthiness
+
+Before gating on `judge.score`, calibrate the judge against human labels
+(`sagwa`'s own study: [calibration/calibration_report.md](calibration/calibration_report.md)).
+`require_calibration()` refuses a judge with no recorded agreement above your
+kappa threshold, deliberately. An uncalibrated LLM judge that fails open is
+worse than no judge — in Sagwa's own benchmark it rated a
+measurably worse pipeline *higher* than its baseline.
+
 ## Roadmap and Contributing
 
 ### Current status
