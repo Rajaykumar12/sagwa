@@ -48,3 +48,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sagwa"]
+
+# The Alembic migrations live at the repo root for local use (`alembic upgrade
+# head`), but a consumer installing sagwa from git — e.g. the GitHub Action in
+# another team's repo — has no repo root to read them from. Ship a copy inside
+# the package; `sagwa migrate` prefers the repo copy when present and falls
+# back to this one.
+[tool.hatch.build.targets.wheel.force-include]
+"migrations" = "sagwa/_migrations"

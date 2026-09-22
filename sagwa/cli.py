@@ -209,14 +209,52 @@ def diff(
 
 
 @app.command()
+def migrate():
+    """Create or upgrade the run-history schema (`alembic upgrade head`).
+
+    Exists so the schema can be prepared from an *installed* sagwa, where the
+    repo root's `alembic.ini` and `migrations/` aren't available — which is the
+    case for the GitHub Action running inside another team's repo.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    repo_migrations = Path("migrations")
+    packaged = Path(__file__).parent / "_migrations"
+    script_location = repo_migrations if repo_migrations.is_dir() else packaged
+    if not script_location.is_dir():
+        typer.echo(
+            "Could not find the migrations directory — expected ./migrations "
+            f"or {packaged}. Reinstall sagwa, or run from the repo root."
+        )
+        raise typer.Exit(1)
+
+    config = Config()
+    config.set_main_option("script_location", str(script_location))
+    # migrations/env.py reads DATABASE_URL itself, so nothing to pass here.
+    command.upgrade(config, "head")
+    typer.echo(f"Schema up to date ({script_location}).")
+
+
+@app.command()
 def gate(
     run_id: str = typer.Option(..., help="Run id to gate"),
     config: Path = typer.Option(Path("config/gates.yaml"), help="Gate thresholds config"),
+    baseline: str = typer.Option(
+        None, help="Also fail on a significant regression against this baseline run id"
+    ),
     output_json: Path = typer.Option(None, "--json", help="Write machine-readable JSON here"),
 ):
-    """Gate a run against configured thresholds (PRD FR-23..FR-25)."""
+    """Gate a run against configured thresholds (PRD FR-23..FR-25).
+
+    Without `--baseline` this checks absolute thresholds only, exactly as
+    before. With it, each configured metric must ALSO not have regressed
+    significantly against that run — which is the question a PR actually
+    raises ("is this worse than main?", PRD G2 + G4).
+    """
     try:
         gates = load_gate_config(config)
+        regression_config = load_regression_config(config)
     except GateConfigError as e:
         typer.echo(str(e))
         raise typer.Exit(1)
