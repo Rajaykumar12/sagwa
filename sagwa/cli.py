@@ -81,8 +81,19 @@ def run(
     ),
     dataset: Path = typer.Option(..., help="Path to a golden-set JSONL file"),
     concurrency: int = typer.Option(5, help="Max concurrent adapter calls (PRD FR-5)"),
+    resume: str = typer.Option(
+        None, help="Resume an interrupted run id: re-runs only its missing cases"
+    ),
+    output_json: Path = typer.Option(
+        None, "--json", help="Write the run id and counts here (so CI needn't scrape stdout)"
+    ),
 ):
-    """Run a golden set against a target pipeline (PRD FR-4)."""
+    """Run a golden set against a target pipeline (PRD FR-4).
+
+    Results are written per case as they complete, not in one batch at the end:
+    a run killed by a suspend, a dropped connection or an exhausted API quota
+    keeps everything it already paid for, and `--resume` finishes the rest.
+    """
     try:
         cases = load_golden_set(dataset)
     except DatasetError as e:
@@ -104,57 +115,78 @@ def run(
         typer.echo(f"Missing required environment variable for target '{target}': {e}")
         raise typer.Exit(1)
 
-    outcomes = run_cases(adapter, cases, max_concurrency=concurrency)
+    with get_session() as session:
+        if resume is not None:
+            run_row = session.get(Run, resume)
+            if run_row is None:
+                typer.echo(f"Unknown run id: {resume}")
+                raise typer.Exit(1)
+            done = {case_id for (case_id,) in session.query(Result.case_id).filter(Result.run_id == resume)}
+            cases = [case for case in cases if case.id not in done]
+            run_row.status = "running"
+            typer.echo(f"Resuming run {resume}: {len(done)} case(s) already stored, {len(cases)} to go")
+        else:
+            run_row = Run(
+                sagwa_git_sha=_sagwa_git_sha(),
+                target_pipeline_git_sha=_target_pipeline_git_sha(adapter),
+                target_name=target,
+                model=_run_model_label(adapter),
+                dataset_path=str(dataset),
+                dataset_sha256=_dataset_sha256(dataset),
+                status="running",
+            )
+            session.add(run_row)
+            session.flush()  # populate run_row.id
+        run_id = run_row.id
+
+    def _persist(outcome) -> None:
+        """Called once per finished case, from the runner's collecting thread."""
+        if outcome.error is not None:
+            row = Result(
+                run_id=run_id,
+                case_id=outcome.case.id,
+                input=outcome.case.input,
+                output="",
+                latency_ms=0,
+                error=outcome.error,
+            )
+        else:
+            result = outcome.result
+            row = Result(
+                run_id=run_id,
+                case_id=outcome.case.id,
+                input=outcome.case.input,
+                output=result.answer,
+                context=result.context,
+                latency_ms=result.latency_ms,
+                tokens=result.tokens,
+                cost_usd=result.cost_usd,
+                metrics_json=compute_metrics(outcome.case, result.answer, result.context),
+            )
+        with get_session() as session:
+            session.add(row)
+
+    outcomes = run_cases(adapter, cases, max_concurrency=concurrency, on_outcome=_persist)
     failed = [o for o in outcomes if o.error is not None]
 
     with get_session() as session:
-        run_row = Run(
-            sagwa_git_sha=_sagwa_git_sha(),
-            target_pipeline_git_sha=_target_pipeline_git_sha(adapter),
-            target_name=target,
-            model=_run_model_label(adapter),
-            dataset_path=str(dataset),
-            dataset_sha256=_dataset_sha256(dataset),
-            status="running",
-        )
-        session.add(run_row)
-        session.flush()  # populate run_row.id
-
-        for outcome in outcomes:
-            if outcome.error is not None:
-                session.add(
-                    Result(
-                        run_id=run_row.id,
-                        case_id=outcome.case.id,
-                        input=outcome.case.input,
-                        output="",
-                        latency_ms=0,
-                        error=outcome.error,
-                    )
-                )
-                continue
-
-            result = outcome.result
-            session.add(
-                Result(
-                    run_id=run_row.id,
-                    case_id=outcome.case.id,
-                    input=outcome.case.input,
-                    output=result.answer,
-                    context=result.context,
-                    latency_ms=result.latency_ms,
-                    tokens=result.tokens,
-                    cost_usd=result.cost_usd,
-                    metrics_json=compute_metrics(outcome.case, result.answer, result.context),
-                )
-            )
-        run_row.status = "completed"
-        run_id = run_row.id
+        session.get(Run, run_id).status = "completed"
+        total = session.query(Result).filter(Result.run_id == run_id).count()
+        errored = session.query(Result).filter(Result.run_id == run_id, Result.error.isnot(None)).count()
 
     typer.echo(
-        f"Run {run_id}: {len(cases)} case(s) against target '{target}'"
-        + (f" ({len(failed)} failed)" if failed else "")
+        f"Run {run_id}: {total} case(s) against target '{target}'"
+        + (f" ({errored} failed)" if errored else "")
     )
+    if output_json is not None:
+        output_json.write_text(
+            json.dumps(
+                {"run_id": run_id, "target": target, "dataset": str(dataset),
+                 "cases": total, "errored": errored, "ran_now": len(outcomes),
+                 "failed_now": len(failed)},
+                indent=2,
+            )
+        )
 
 
 def _target_pipeline_git_sha(adapter: TargetAdapter) -> str | None:

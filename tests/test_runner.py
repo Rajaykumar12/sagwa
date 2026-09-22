@@ -62,3 +62,23 @@ def test_max_concurrency_is_respected():
     run_cases(_SlowAdapter(), cases, max_concurrency=2)
 
     assert peak["value"] <= 2
+
+
+def test_on_outcome_is_called_once_per_case_as_they_finish():
+    """`sagwa run` persists from this callback, so every case must reach it
+    exactly once — a missed call is a silently dropped result."""
+    cases = [_case("a", "one"), _case("b", "fail this one"), _case("c", "three")]
+    seen = []
+
+    outcomes = run_cases(_FlakyAdapter(), cases, max_concurrency=3, on_outcome=seen.append)
+
+    assert sorted(o.case.id for o in seen) == ["a", "b", "c"]
+    assert len(seen) == len(outcomes)
+    # Failures reach the callback too — that is how they get recorded as
+    # errored results rather than vanishing.
+    assert any(o.error is not None for o in seen)
+
+
+def test_on_outcome_is_optional():
+    outcomes = run_cases(_FlakyAdapter(), [_case("a", "one")], max_concurrency=1)
+    assert outcomes[0].result.answer == "ok: one"

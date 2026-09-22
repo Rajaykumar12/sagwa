@@ -10,6 +10,7 @@ limit (FR-5).
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from typing import Callable
 
 from sagwa.adapters.base import AdapterResult, TargetAdapter
 from sagwa.datasets.schema import GoldenCase
@@ -31,8 +32,15 @@ def run_cases(
     adapter: TargetAdapter,
     cases: list[GoldenCase],
     max_concurrency: int = 5,
+    on_outcome: Callable[[CaseOutcome], None] | None = None,
 ) -> list[CaseOutcome]:
-    """Execute `cases` against `adapter`, `max_concurrency` at a time."""
+    """Execute `cases` against `adapter`, `max_concurrency` at a time.
+
+    `on_outcome` is called as each case finishes, in completion order, so a
+    caller can persist results incrementally instead of only at the end — a
+    run interrupted midway then keeps the cases it already paid for. It is
+    called from the pool's collecting thread (one at a time, never
+    concurrently), so a plain session write inside it is safe."""
 
     def _run_one(case: GoldenCase) -> CaseOutcome:
         try:
@@ -47,6 +55,8 @@ def run_cases(
         for future in as_completed(futures):
             outcome = future.result()
             outcomes_by_case_id[outcome.case.id] = outcome
+            if on_outcome is not None:
+                on_outcome(outcome)
 
     # as_completed() yields in completion order; restore dataset order so
     # results are stable and diffable regardless of concurrency timing.
