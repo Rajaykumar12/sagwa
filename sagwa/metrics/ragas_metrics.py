@@ -3,11 +3,10 @@ precision. Only meaningful for `task_type == "rag_qa"` cases that have
 `context` (the adapter-reported retrieved context).
 
 Requires the `metrics` extra (`ragas`, `langchain-groq`) and a configured
-GROQ_API_KEY — reusing the same provider ringo's own `backend/eval.py`
-uses, which is what keeps the calibration head-to-head comparison
-apples-to-apples (PRD FR-15a, PLAN.md §5).
+GROQ_API_KEY — the same provider the judge harness uses, so RAGAS and the
+judge stay comparable on cost and latency.
 
-Previously blocked (see docs/GAP_ANALYSIS.md), now fixed: `ragas==0.4.3`
+Previously blocked (see docs/STATUS.md), now fixed: `ragas==0.4.3`
 unconditionally imports `ChatVertexAI` from
 `langchain_community.chat_models.vertexai` at module load, a module
 `langchain-community` removed as of `0.4.x` while sunsetting legacy
@@ -18,6 +17,12 @@ broke. Fixed by pinning `langchain-community<0.4` in `pyproject.toml`'s
 compatible with everything else installed). Live-verified end-to-end
 against Groq (2026-08-19): real faithfulness/context-precision scores
 returned, not just an import that succeeds.
+
+Two optional env vars, both defaulting to the behavior above:
+`SAGWA_RAGAS_MODEL` (the Groq model RAGAS scores with) and
+`SAGWA_RAGAS_METRICS` (comma-separated subset to compute). Both exist for
+Groq's per-model rate limits: scoring on a different model than the judge
+uses gives RAGAS its own tokens-per-minute budget.
 
 Every metric here still degrades to `None` with an `_error` string on any
 failure (missing `GROQ_API_KEY`, a future API change, etc.) rather than
@@ -39,9 +44,8 @@ def _get_judge_llm():
         from langchain_groq import ChatGroq
         from ragas.llms import LangchainLLMWrapper
 
-        # Model choice mirrors sagwa/judge/harness.py::groq_llm_call — see
-        # its docstring for why "llama-3.1-8b-instant" (ringo's eval.py
-        # default) is no longer viable. reasoning_effort="low" matters for
+        # Model choice mirrors sagwa/judge/harness.py::groq_llm_call.
+        # reasoning_effort="low" matters for
         # the same reason it does there: gpt-oss models spend max_tokens on
         # hidden reasoning first, so a low-effort setting is needed to get
         # a usable score back within any reasonable token budget. Passed as
@@ -50,12 +54,26 @@ def _get_judge_llm():
         # ChatGroq field and rejects it inside model_kwargs with a
         # pydantic validation error. Verified live against Groq.
         chat = ChatGroq(
-            model="openai/gpt-oss-20b",
+            model=os.environ.get("SAGWA_RAGAS_MODEL", "openai/gpt-oss-20b"),
             api_key=os.environ["GROQ_API_KEY"],
             reasoning_effort="low",
+            # See sagwa/judge/harness.py::groq_llm_call — a run with no
+            # request timeout hangs indefinitely when the connection dies.
+            timeout=90.0,
         )
         _judge_llm = LangchainLLMWrapper(chat)
     return _judge_llm
+
+
+def _enabled_metrics() -> set[str]:
+    """Which RAGAS metrics to compute. `SAGWA_RAGAS_METRICS` (comma-separated)
+    narrows the default set — a run whose gate config doesn't read
+    `context_precision` can skip it and its LLM calls with it, which matters
+    against a per-model tokens-per-minute rate limit."""
+    configured = os.environ.get("SAGWA_RAGAS_METRICS")
+    if not configured:
+        return {"faithfulness", "context_precision"}
+    return {name.strip() for name in configured.split(",") if name.strip()}
 
 
 def _score(metric, sample):
@@ -91,6 +109,8 @@ def compute_ragas_metrics(query: str, context: str, answer: str) -> dict:
         ("faithfulness", Faithfulness),
         ("context_precision", LLMContextPrecisionWithoutReference),
     ]:
+        if key not in _enabled_metrics():
+            continue
         try:
             results[key] = _score(metric_cls(llm=llm), sample)
         except Exception as e:
