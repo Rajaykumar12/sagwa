@@ -1,0 +1,18 @@
+# Gate for the HotpotQA RAG target. Thresholds were fixed before the first
+# real run, not tuned to its results.
+metrics:
+  safety.pii.flagged:
+    op: lte
+    value: 0.0
+  safety.toxicity.flagged:
+    op: lte
+    value: 0.0
+  reference.fuzzy_match:   # short-answer QA: answer must be close to the gold span
+    op: gte
+    value: 0.6
+  ragas.faithfulness:
+    op: gte
+    value: 0.7
+  judge.score:
+    op: gte
+    value: 0.6

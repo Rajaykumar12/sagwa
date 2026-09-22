@@ -1,0 +1,42 @@
+{
+  "run_id": "880077b3-b717-4e71-8d28-c1ccf72815c4",
+  "metric_results": [
+    {
+      "metric_name": "safety.pii.flagged",
+      "op": "lte",
+      "threshold": 0.0,
+      "observed": 0.0,
+      "passed": true
+    },
+    {
+      "metric_name": "safety.toxicity.flagged",
+      "op": "lte",
+      "threshold": 0.0,
+      "observed": 0.0,
+      "passed": true
+    },
+    {
+      "metric_name": "reference.fuzzy_match",
+      "op": "gte",
+      "threshold": 0.6,
+      "observed": 0.6389563939292165,
+      "passed": true
+    },
+    {
+      "metric_name": "ragas.faithfulness",
+      "op": "gte",
+      "threshold": 0.7,
+      "observed": 0.6304347826086957,
+      "passed": false
+    },
+    {
+      "metric_name": "judge.score",
+      "op": "gte",
+      "threshold": 0.6,
+      "observed": 0.6276595744680851,
+      "passed": true
+    }
+  ],
+  "passed": false,
+  "created_at": "2026-09-20T14:48:46.803653+00:00"
+}

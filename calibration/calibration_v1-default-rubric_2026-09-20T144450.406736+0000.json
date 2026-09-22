@@ -1,0 +1,14 @@
+{
+  "judge_prompt_version": "v1-default-rubric",
+  "n": 200,
+  "accuracy": 0.725,
+  "cohen_kappa": 0.44999999999999996,
+  "confusion_matrix": {
+    "pass|fail": 17,
+    "pass|pass": 83,
+    "fail|fail": 62,
+    "fail|pass": 38
+  },
+  "created_at": "2026-09-20T14:44:50.406736+00:00",
+  "baseline_name": null
+}

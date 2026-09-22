@@ -1,0 +1,72 @@
+[
+  {
+    "cluster_id": 0,
+    "case_ids": [
+      "hotpotqa-5abd0b9a5542996e802b46b7",
+      "hotpotqa-5a7dd6cd5542995f4f4022cd",
+      "hotpotqa-5a8911dd554299515336129d",
+      "hotpotqa-5ae4f2595542990ba0bbb1a8",
+      "hotpotqa-5a7af23a55429931da12c994",
+      "hotpotqa-5abebb8f5542994516f4540a",
+      "hotpotqa-5adfb78f5542995ec70e9081",
+      "hotpotqa-5ab2ac3d55429929539467ce",
+      "hotpotqa-5a79ecd05542996c55b2dca1",
+      "hotpotqa-5ade15f35542997545bbbe47",
+      "hotpotqa-5ac3e68b5542997ea680c98b",
+      "hotpotqa-5a77d25555429949eeb29f6c",
+      "hotpotqa-5a8a231a55429930ff3c0cb4",
+      "hotpotqa-5a7cc700554299452d57ba4e",
+      "hotpotqa-5a8b97485542995d1e6f140f",
+      "hotpotqa-5a82d71555429966c78a6a94",
+      "hotpotqa-5a8ceddb554299441c6b9f85",
+      "hotpotqa-5a8574945542997b5ce3fffb",
+      "hotpotqa-5ab9812d554299753720f821",
+      "hotpotqa-5ae268f35542994d89d5b416",
+      "hotpotqa-5a750ccc5542993748c897a8",
+      "hotpotqa-5a74cfed5542993748c896ea",
+      "hotpotqa-5a73977d554299623ed4ac08",
+      "hotpotqa-5a7647505542992d0ec06089",
+      "hotpotqa-5a85f4425542994775f606c4",
+      "hotpotqa-5ac4c16b5542997ea680cab4",
+      "hotpotqa-5ac5632e5542993e66e823d9",
+      "hotpotqa-5ab2383155429970612095c1",
+      "hotpotqa-5add1eed5542992ae4cec485"
+    ],
+    "label": "Providing incorrect or incomplete answers.",
+    "size": 29
+  },
+  {
+    "cluster_id": -1,
+    "case_ids": [
+      "hotpotqa-5ae7308d5542991e8301cbb8",
+      "hotpotqa-5ae306115542992decbdcdc4",
+      "hotpotqa-5ab2da99554299194fa93544",
+      "hotpotqa-5abe3c7555429965af743ea5",
+      "hotpotqa-5abbf698554299114383a0b5",
+      "hotpotqa-5abc3c545542993a06baf89f",
+      "hotpotqa-5ae1091055429920d523429b",
+      "hotpotqa-5a76db3555429972597f13e7",
+      "hotpotqa-5abbdd565542993f40c73bfb",
+      "hotpotqa-5a7521c55542993748c897c6",
+      "hotpotqa-5a7da9ae5542995f4f4022b1",
+      "hotpotqa-5a75a76b5542992db9473697",
+      "hotpotqa-5a8f1672554299458435d558",
+      "hotpotqa-5a75d35d5542992d0ec05ffe",
+      "hotpotqa-5ab6087a554299110f2199be",
+      "hotpotqa-5a87954f5542996e4f308856"
+    ],
+    "label": "(unclustered outliers)",
+    "size": 16
+  },
+  {
+    "cluster_id": 1,
+    "case_ids": [
+      "hotpotqa-5a807ea1554299485f598624",
+      "hotpotqa-5ade28cf5542997c77aded85",
+      "hotpotqa-5a721e0e55429971e9dc928d",
+      "hotpotqa-5ae04a2755429924de1b7091"
+    ],
+    "label": "Providing correct facts instead of the requested format.",
+    "size": 4
+  }
+]

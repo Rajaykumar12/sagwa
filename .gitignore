@@ -13,3 +13,8 @@ graphify-out/
 # Markdown (PRD/PLAN/ADRs/ARCHITECTURE/etc.) is local-only working notes.
 *.md
 !README.md
+
+# Benchmark run artifacts: regenerable, and the DB is a binary that churns.
+benchmarks/benchmarks.db
+benchmarks/last_run.log
+benchmarks/out/*.log
