@@ -88,3 +88,11 @@ def test_cluster_run_end_to_end_sorted_by_size(monkeypatch):
                 for r in list(run_row.results):
                     session.delete(r)
                 session.delete(run_row)
+
+
+def test_cluster_failures_returns_empty_when_fewer_cases_than_min_cluster_size():
+    # Real case (2026-09-20): a run failed almost entirely, leaving one
+    # scoreable case. hdbscan's kd-tree raised "k must be less than or equal
+    # to the number of training points" — too few cases is an answer, not an error.
+    one_case = [Result(run_id="r", case_id="1", input="x", output="y", latency_ms=1)]
+    assert cluster_failures(one_case, min_cluster_size=3) == []

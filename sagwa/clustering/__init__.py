@@ -16,7 +16,7 @@ rather than crash" pattern used throughout the metrics layer.
 Requires the `clustering` extra (`sentence-transformers`, `hdbscan`).
 `min_cluster_size=3` is a provisional default — real tuning needs a real
 golden set (currently only a 3-case example exists, see
-docs/GAP_ANALYSIS.md), not the toy fixtures this module's own tests use.
+docs/STATUS.md), not the toy fixtures this module's own tests use.
 """
 from __future__ import annotations
 
@@ -80,7 +80,13 @@ def cluster_failures(results: list[Result], min_cluster_size: int = 3) -> list[F
         # case is never its own "cluster" anyway; that's just one case).
         raise ValueError(f"min_cluster_size must be >= 2, got {min_cluster_size}")
 
-    if not results:
+    if len(results) < min_cluster_size:
+        # hdbscan's kd-tree asks for min_samples+1 neighbours and raises
+        # "k must be less than or equal to the number of training points"
+        # when there are fewer failing cases than that. Too few cases to
+        # form a cluster isn't an error — it's the answer (no clusters).
+        # Hit for real when a run failed almost entirely and left one
+        # scoreable case behind (2026-09-20).
         return []
 
     texts = [f"{r.input}\n{r.output}" for r in results]
@@ -123,7 +129,9 @@ def label_cluster(case_texts: list[str]) -> str:
     try:
         from sagwa.judge.harness import groq_llm_call
 
-        llm_call = groq_llm_call()
+        # Naming a failure cluster is the least demanding LLM job here, so it
+        # routes independently of the judge (see groq_llm_call's docstring).
+        llm_call = groq_llm_call(os.environ.get("SAGWA_CLUSTER_MODEL"))
         sample = "\n---\n".join(case_texts[:5])  # cap prompt size
         prompt = (
             "The following are inputs/outputs from failing test cases in an LLM "
