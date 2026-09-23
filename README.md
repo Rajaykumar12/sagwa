@@ -24,18 +24,18 @@ Sagwa closes that gap. It is not another AI app, it's testing and observability 
 | Golden-set schema and loader | Pydantic `GoldenCase` model (`id`, `input`, `expected_output`/`expected_labels`, `task_type`, `tags`); JSONL files are validated on load, with malformed rows rejected and reported by line number | Built and tested |
 | Pluggable target adapters | Any pipeline implements `TargetAdapter.run(case_input) -> AdapterResult` (`answer`, `context`, `latency_ms`, `tokens`, `cost_usd`). Resolved at runtime via a built-in name (`stub`) or a `module.path:ClassName` string, no registry, no changes to Sagwa's source required to add a new target | Built and tested |
 | Async/concurrent eval runner | Bounded-concurrency execution of a golden set against a target adapter (`--concurrency`); a failing case is captured per-row, not fatal to the run | Built and tested |
-| `sagwa run` CLI | Wires loader, adapter, runner, metrics, and storage end-to-end; pins the target pipeline's own git SHA and model label when the adapter exposes them | Built and tested |
+| `sagwa run` CLI | Wires loader, adapter, runner, metrics, and storage end-to-end; persists each case as it finishes, so `--resume <run_id>` re-runs only what an interrupted run missed; pins the target pipeline's own git SHA and model label when the adapter exposes them | Built and tested |
 | Run-history storage | Append-only `runs`/`results` tables (SQLAlchemy + Alembic) pinning `sagwa_git_sha`, `target_pipeline_git_sha`, `dataset_sha256`, model, and status per run | Built and tested |
 | Reference-based, classification, and safety metrics | Exact/fuzzy match, ROUGE-L, embedding similarity (where a reference string exists); set-based precision/recall/F1 and exact-set-match (where `expected_labels` exists); PII-regex and toxicity-keyword flags on every case | Built and tested |
 | LLM-as-judge harness | Absolute and pairwise scoring modes, wired into `sagwa run` itself (every case gets a judge score plus the judge's raw rationale text, not just reference metrics), live-verified against Groq | Built and tested |
-| Judge calibration engine | Cohen's kappa, confusion matrix, versioned calibration artifacts, refusal-to-gate below a kappa threshold, and a baseline-comparison mode (for scoring a prior judge against the same human labels) | Built and tested against a synthetic fixture; real ~150-200-case human study not yet run |
+| Judge calibration engine | Cohen's kappa, confusion matrix, versioned calibration artifacts, refusal-to-gate below a kappa threshold, and a baseline-comparison mode (for scoring a prior judge against the same human labels) | Built and measured: κ = 0.450 (95% CI [0.325, 0.569], accuracy 72.5%) against 200 human labels from HelpSteer2, below the 0.70 bar, so the gate refuses this judge |
 | RAGAS metrics (faithfulness, context precision) | Wraps RAGAS for reference-free RAG scoring | Built and live-verified against Groq (a `ragas`/`langchain-community` version pin resolved the prior import failure) |
 | `sagwa diff` | Per-metric/per-tag regression detection: paired bootstrap CI for continuous metrics, exact McNemar's for binary metrics, plus a case-level pass/fail flip list, CLI table and `--json` output | Built and tested |
 | Failure clustering | Embeds failing cases, HDBSCAN clusters them, auto-labels each cluster via the judge harness (keyword fallback with no `GROQ_API_KEY`) | Built and tested; `min_cluster_size` default is provisional pending a real-scale golden set |
-| `sagwa gate` and CI Action | Threshold-based CI gating from `config/gates.yaml`; the GitHub Action runs a real gate and posts the result as a PR comment | Built and tested; CI Action currently gates the bundled `stub` adapter only, not yet exercised against a real target |
+| `sagwa gate` and CI Action | Threshold-based CI gating from `config/gates.yaml`, plus `--baseline <run_id>` to also fail on a statistically significant regression against a prior run. The reusable GitHub Action (`action.yml`) publishes main's run database as a baseline artifact and gates PRs against it, posting the result as a PR comment | Built and tested; the repo's own workflow still gates the bundled `stub` adapter, not yet a real target |
 | Dashboard | Streamlit trend/cost/cluster browser with per-case drill-down (including judge rationale) | Built; query layer is unit-tested, the Streamlit UI itself has not been manually reviewed in a browser |
 
-Summary: the full pipeline described above (ingest, run, metrics, judge, diff, gate, cluster, dashboard) is built and tested end-to-end. What remains is largely external to the code: a real target pipeline validated against live traffic, a real golden set at scale, and the ~150-200-case human calibration study.
+Summary: the full pipeline described above (ingest, run, metrics, judge, diff, gate, cluster, dashboard) is built and tested end-to-end. Public-benchmark targets and golden sets (HotpotQA, CNN/DailyMail; `benchmarks/`) have been run, and a deliberately degraded HotpotQA pipeline was caught by `sagwa diff` (5 metrics significantly worse, 21 pass→fail flips, 0 the other way). What remains is evidence rather than code: the judge does not yet clear its κ bar, and CI does not yet gate a real target.
 
 ## Tech Stack and Architecture
 
@@ -117,7 +117,7 @@ cp .env.example .env
 
 # Run database migrations - REQUIRED before tests or `sagwa run` on a fresh
 # clone. A sagwa.db file existing does NOT mean it's migrated.
-alembic upgrade head
+alembic upgrade head   # or, from an installed package without alembic.ini: sagwa migrate
 
 # Run the test suite
 pytest
@@ -145,12 +145,14 @@ Gate config parsing (`pyyaml`) is a core dependency, not an extra, since `sagwa 
 ### `sagwa run`: execute a golden set against a target pipeline
 
 ```bash
-sagwa run --target <name-or-module:Class> --dataset <path-to-jsonl> [--concurrency N]
+sagwa run --target <name-or-module:Class> --dataset <path-to-jsonl> [--concurrency N] [--resume <run_id>] [--json out.json]
 ```
 
 - `--target`: either the built-in `stub` adapter, or `module.path:ClassName` pointing at any class implementing `TargetAdapter`, resolved the same way `python -m` would from your current working directory.
 - `--dataset`: path to a golden-set JSONL file (schema: `id`, `input`, `expected_output` or `expected_labels`, `task_type` one of `rag_qa`, `summarization`, `classification`, and `tags`).
 - `--concurrency`: max concurrent adapter calls (default `5`).
+- `--resume`: continue an interrupted run by id, re-running only the cases it hasn't stored yet.
+- `--json`: write the run id and case counts to a file (used by the CI Action).
 
 Each run is persisted (append-only) with its Sagwa git SHA, the target pipeline's git SHA (when the adapter exposes `repo_path`), a dataset content hash, and per-case results including latency, tokens, cost, and computed metrics.
 
@@ -256,7 +258,7 @@ Reports, per metric, the baseline/candidate means and delta, with a paired boots
 ### `sagwa gate`: threshold-gate one run
 
 ```bash
-sagwa gate --run-id <run_id> [--config config/gates.yaml] [--json out.json]
+sagwa gate --run-id <run_id> [--config config/gates.yaml] [--baseline <run_id>] [--json out.json]
 ```
 
 Reads `config/gates.yaml` (version-controlled, per-metric thresholds), computes each configured metric's mean across the run, and compares it against its threshold. Exits non-zero if any metric fails, including a metric that was configured but never computed for the run (that fails loudly, it does not get silently skipped). Example config:
@@ -279,7 +281,9 @@ metrics:
 
 Keys are dotted paths into a `Result`'s `metrics_json` (see the metrics table above for what each metrics module produces), not bare metric names.
 
-The GitHub Action (`.github/workflows/eval-gate.yml`) runs `sagwa run --target stub` then `sagwa gate` on every PR and posts the result as a PR comment, failing the check on a gate failure. It currently gates the bundled `stub` adapter, wiring in a real target is a deployment-time decision, not a code change.
+With `--baseline <run_id>`, the gate also fails any metric whose change from that run is statistically significant, larger than the config's `regression.tolerance`, and in the bad direction.
+
+This repo's own workflow (`.github/workflows/eval-gate.yml`) uses the action described below, but still points at the bundled `stub` adapter. Note that `judge.score`, `ragas.*` need a `GROQ_API_KEY` repository secret; without it those metrics are never computed and the gate fails them. Wiring in a real target is a deployment-time decision, not a code change.
 
 ### `sagwa cluster`: group a run's failures
 
@@ -374,11 +378,11 @@ nightly or on merges to main.
 ### Judge trustworthiness
 
 Before gating on `judge.score`, calibrate the judge against human labels
-(`sagwa`'s own study: [calibration/calibration_report.md](calibration/calibration_report.md)).
+(`sagwa`'s own study, 200 HelpSteer2 human labels: [calibration/calibration_v1-default-rubric_2026-09-20T144450.406736+0000.json](calibration/calibration_v1-default-rubric_2026-09-20T144450.406736+0000.json), κ = 0.450).
 `require_calibration()` refuses a judge with no recorded agreement above your
 kappa threshold, deliberately. An uncalibrated LLM judge that fails open is
-worse than no judge — in Sagwa's own benchmark it rated a
-measurably worse pipeline *higher* than its baseline.
+worse than no judge — in Sagwa's own benchmark (`benchmarks/out/diff_hotpotqa.json`) it rated a
+measurably worse pipeline 0.22 *higher* than its baseline, while reference metrics and RAGAS faithfulness caught the regression.
 
 ## Roadmap and Contributing
 
@@ -386,20 +390,20 @@ measurably worse pipeline *higher* than its baseline.
 
 The full pipeline is built and tested: golden-set schema/loader, run-history storage, adapter contract, the async runner, reference/classification/safety metrics, the judge harness (wired into every run, not just calibration), the calibration engine, `sagwa diff`, `sagwa gate` plus a real CI Action, `sagwa cluster`, and the Streamlit dashboard.
 
-What's left is mostly external to the code, not missing implementation:
+What's left is mostly evidence, not missing implementation:
 
-- No adapter has been run against a real, live target pipeline from this repo yet — no golden set has been written for one either.
-- The CI Action gates the bundled `stub` adapter, proving the mechanism (run, gate, exit code, PR comment) rather than catching a real regression, until a real target is wired in.
-- The real ~150-200-case human calibration study, the project's credibility anchor, has not been run yet.
-- `sagwa cluster`'s `min_cluster_size` default is provisional, tuned against toy fixtures rather than a real-scale golden set.
+- The judge's measured κ (0.450) is below the 0.70 target, so `judge.score` should not be the only metric a gate relies on. A revised rubric has not been re-measured.
+- The first real regression verdict comes from public benchmarks (HotpotQA with a deliberately degraded v2), not from a product's own traffic.
+- The repo's own CI workflow gates the bundled `stub` adapter; a real target needs the `GROQ_API_KEY` secret and a token budget per run.
+- `sagwa cluster`'s `min_cluster_size` default is provisional, not tuned at real scale.
 - The dashboard's Streamlit UI has not been manually reviewed in a browser (its query layer is unit-tested).
+- A free Groq tier allows roughly one 50-case RAG run per model per day, which shapes how `benchmarks/run_benchmarks.sh` is used (it deletes its database first).
 
 ### Upcoming
 
-- Write and validate a real adapter against a live target instance with a real, hand-authored golden set
-- Run the real judge calibration study (~150-200 human-labeled cases)
-- Wire a real target pipeline into the CI Action, replacing the `stub` demo
-- Write-up, demo video, README polish
+- Re-measure the judge with the revised rubric and report κ against a naive-prompt baseline
+- Point the CI Action at a real target and show one blocked and one passing PR
+- Measure the cost saving from per-role model routing (`SAGWA_*_MODEL` is built; the saving is not yet quantified), and record an end-to-end demo
 
 Deferred beyond this scope: online/production traffic evaluation, multi-judge ensembling, a hosted multi-tenant version, and other longer-horizon initiatives.
 
