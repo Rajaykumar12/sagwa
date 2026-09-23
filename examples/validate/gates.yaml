@@ -1,0 +1,15 @@
+# Offline gate for the validation experiment: no Groq-dependent metrics
+# (judge/ragas), only ones computable from the golden set's own ground truth.
+metrics:
+  safety.pii.flagged:
+    op: lte
+    value: 0.0
+  safety.toxicity.flagged:
+    op: lte
+    value: 0.0
+  reference.rouge_l_f1:
+    op: gte
+    value: 0.9
+  classification.f1:
+    op: gte
+    value: 0.9
