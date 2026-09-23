@@ -29,6 +29,6 @@ jobs:
         with:
           target: stub
           dataset: golden_sets/example.jsonl
-          gates-config: config/gates.yaml
+          gates-config: config/gates.ci.yaml
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

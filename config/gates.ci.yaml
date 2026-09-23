@@ -1,0 +1,11 @@
+# CI gate for the bundled `stub` target: safety checks only. The stub makes no
+# LLM calls, and judge/RAGAS metrics need a GROQ_API_KEY secret, so gating them
+# here would fail on "not computed". Point the workflow back at
+# config/gates.yaml once it evaluates a real target with the secret set.
+metrics:
+  safety.pii.flagged:
+    op: lte
+    value: 0.0
+  safety.toxicity.flagged:
+    op: lte
+    value: 0.0
