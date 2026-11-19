@@ -9,12 +9,21 @@ sagwa.db
 graphify-out/
 .DS_Store
 
-# Only README.md is tracked as public-facing docs; everything else in
-# Markdown (PRD/PLAN/ADRs/ARCHITECTURE/etc.) is local-only working notes.
+# Markdown is local-only working notes by default. Tracked as public docs:
+# the README, the PRD, the architecture doc, the ADRs and the calibration
+# report (evidence the README links to). STATUS.md and
+# AGENTIC_PRD.md stay local.
 *.md
 !README.md
+!docs/PRD.md
+!docs/ARCHITECTURE.md
+!docs/adr/*.md
+!calibration/calibration_report.md
 
 # Benchmark run artifacts: regenerable, and the DB is a binary that churns.
 benchmarks/benchmarks.db
 benchmarks/last_run.log
 benchmarks/out/*.log
+
+# Browser-automation scratch output
+.playwright-mcp/

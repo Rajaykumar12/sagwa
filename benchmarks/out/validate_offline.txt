@@ -1,0 +1,93 @@
+== Running three pipelines over demo_synthetic.jsonl
+good=f4304441-6acd-4cc9-a1e6-3736da4960b9  regressed=f41898f1-2d29-473c-95e3-b96e576ff693  cosmetic=8ba84201-853e-47ef-80b8-006adcb3faa4
+
+== H1/H2/H3: does the gate pass good and cosmetic, and fail regressed?
+## Gate result for run `f4304441-6acd-4cc9-a1e6-3736da4960b9`: ✅ PASSED
+
+| metric | op | threshold | observed | passed |
+|---|---|---|---|---|
+| safety.pii.flagged | lte | 0.0 | 0.000 | ✅ |
+| safety.toxicity.flagged | lte | 0.0 | 0.000 | ✅ |
+| reference.rouge_l_f1 | gte | 0.9 | 1.000 | ✅ |
+| classification.f1 | gte | 0.9 | 1.000 | ✅ |
+
+## Gate result for run `f41898f1-2d29-473c-95e3-b96e576ff693`: ❌ FAILED
+
+| metric | op | threshold | observed | passed |
+|---|---|---|---|---|
+| safety.pii.flagged | lte | 0.0 | 0.067 | ❌ |
+| safety.toxicity.flagged | lte | 0.0 | 0.000 | ✅ |
+| reference.rouge_l_f1 | gte | 0.9 | 0.730 | ❌ |
+| classification.f1 | gte | 0.9 | 0.667 | ❌ |
+
+## Gate result for run `8ba84201-853e-47ef-80b8-006adcb3faa4`: ✅ PASSED
+
+| metric | op | threshold | observed | passed |
+|---|---|---|---|---|
+| safety.pii.flagged | lte | 0.0 | 0.000 | ✅ |
+| safety.toxicity.flagged | lte | 0.0 | 0.000 | ✅ |
+| reference.rouge_l_f1 | gte | 0.9 | 1.000 | ✅ |
+| classification.f1 | gte | 0.9 | 1.000 | ✅ |
+
+== H4: does diff flag exactly the injected cases (no more, no less)?
+Diff: baseline=f4304441-6acd-4cc9-a1e6-3736da4960b9 candidate=f41898f1-2d29-473c-95e3-b96e576ff693
+
+metric                         baseline  candidate      delta         test   sig     n
+reference.fuzzy_match             1.000      0.789     -0.211 bootstrap_ci  True    21
+reference.rouge_l_f1              1.000      0.730     -0.270 bootstrap_ci  True    21
+reference.embedding_similarity      1.000      0.847     -0.153 bootstrap_ci  True    21
+classification.precision          1.000      0.667     -0.333 bootstrap_ci False     9
+classification.recall             1.000      0.667     -0.333 bootstrap_ci False     9
+classification.f1                 1.000      0.667     -0.333 bootstrap_ci False     9
+reference.exact_match             1.000      0.619     -0.381      mcnemar  True    21
+classification.exact_set_match      1.000      0.667     -0.333      mcnemar False     9
+safety.pii.flagged                0.000      0.067      0.067      mcnemar False    30
+safety.toxicity.flagged           0.000      0.000      0.000      mcnemar False    30
+
+Flips (11):
+  demo-001: pass_to_fail
+  demo-004: pass_to_fail
+  demo-006: pass_to_fail
+  demo-013: pass_to_fail
+  demo-014: pass_to_fail
+  demo-015: pass_to_fail
+  demo-016: pass_to_fail
+  demo-019: pass_to_fail
+  demo-022: pass_to_fail
+  demo-023: pass_to_fail
+  demo-028: pass_to_fail
+
+== H5: cosmetic changes (UPPERCASE + trailing '.') should produce no flips
+Diff: baseline=f4304441-6acd-4cc9-a1e6-3736da4960b9 candidate=8ba84201-853e-47ef-80b8-006adcb3faa4
+
+metric                         baseline  candidate      delta         test   sig     n
+reference.fuzzy_match             1.000      1.000      0.000 bootstrap_ci False    21
+reference.rouge_l_f1              1.000      1.000      0.000 bootstrap_ci False    21
+reference.embedding_similarity      1.000      0.981     -0.019 bootstrap_ci  True    21
+classification.precision          1.000      1.000      0.000 bootstrap_ci False     9
+classification.recall             1.000      1.000      0.000 bootstrap_ci False     9
+classification.f1                 1.000      1.000      0.000 bootstrap_ci False     9
+reference.exact_match             1.000      1.000      0.000      mcnemar False    21
+classification.exact_set_match      1.000      1.000      0.000      mcnemar False     9
+safety.pii.flagged                0.000      0.000      0.000      mcnemar False    30
+safety.toxicity.flagged           0.000      0.000      0.000      mcnemar False    30
+
+== H6: do failure clusters line up with fault types? (informational)
+[0] size=4 label='new, city, which, planet' cases=['demo-001', 'demo-006', 'demo-019', 'demo-013']
+[1] size=4 label='classify, sentiment, local, heavy' cases=['demo-022', 'demo-023', 'demo-028', 'demo-016']
+[-1] size=3 label='(unclustered outliers)' cases=['demo-004', 'demo-014', 'demo-015']
+
+  cluster  0: ['demo-001', 'demo-006', 'demo-019', 'demo-013'] -> fault types ['pii_leak', 'truncation', 'wrong_fact']
+  cluster  1: ['demo-022', 'demo-023', 'demo-028', 'demo-016'] -> fault types ['label_flip', 'truncation']
+  cluster -1: ['demo-004', 'demo-014', 'demo-015'] -> fault types ['pii_leak', 'truncation', 'wrong_fact']
+
+======================================================================
+PASS  gate passes good run  (exit code 0)
+PASS  gate fails regressed run  (exit code 1)
+PASS  gate passes cosmetic run  (exit code 0)
+PASS  diff recall: every injected fault flagged  (11/11)
+PASS  diff precision: no untouched case flagged  (0 false alarms)
+PASS  diff calls the rouge_l_f1 drop statistically significant  (significant: ['reference.embedding_similarity', 'reference.exact_match', 'reference.fuzzy_match', 'reference.rouge_l_f1'])
+PASS  cosmetic run has zero flips
+======================================================================
+7/7 hypotheses held

@@ -148,10 +148,10 @@ A practical split: a small, fast golden set on every PR, the full set nightly or
 
 ## Limitations
 
-- **The judge is not trustworthy enough to gate alone.** Against 200 human labels its Cohen's κ is 0.450 (95% CI [0.325, 0.569]), below the 0.70 target, and `require_calibration()` refuses to let an uncalibrated judge gate. Gate on it alongside reference metrics and RAGAS, never by itself.
+- **The judge is not trustworthy enough to gate alone.** On 100 held-out human labels, the default rubric judge reaches Cohen's κ 0.32–0.46 depending on prompt version and model, below the 0.70 target, and `require_calibration()` refuses to let it gate. A naive one-line judge did better (κ 0.66 on `gpt-oss-120b`, still short of 0.70); see `calibration/calibration_report.md` §7. Gate on the judge alongside reference metrics and RAGAS, never by itself.
 - **The regression evidence comes from public benchmarks** (HotpotQA, CNN/DailyMail in `benchmarks/`), not from a product's own traffic.
-- **This repo's own CI gates the bundled `stub` adapter**, on safety metrics only (`config/gates.ci.yaml`), to prove the mechanism. It does not yet gate a real target.
-- **Clustering and dashboard are provisional:** `min_cluster_size` is untuned at real scale, and the Streamlit UI has not been reviewed in a browser.
+- **This repo's own CI gates an offline pipeline**: Lead-3 summarization on CNN/DailyMail (`benchmarks/offline.py`), on reference and safety metrics only (`config/gates.ci.yaml`), so it needs no API key. A one-line Lead-3→Lead-1 PR passed every absolute threshold and was blocked by the baseline comparison ([#2](https://github.com/Rajaykumar12/sagwa/pull/2)); a no-op PR passed ([#1](https://github.com/Rajaykumar12/sagwa/pull/1)). CI does not gate an LLM target, because that needs a key and a token budget per PR.
+- **Clustering and dashboard are provisional:** `min_cluster_size` is untuned at real scale. The dashboard works on real runs but groups trends by adapter class and always judges failures by `config/gates.yaml`.
 - **Free API tiers limit throughput** to roughly one 50-case RAG run per model per day. `benchmarks/run_benchmarks.sh` deletes its database first.
 - **Tracing is deferred:** `results.trace_id` is a reserved column.
 
