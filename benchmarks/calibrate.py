@@ -3,6 +3,7 @@
 
     python -m benchmarks.calibrate                # tune half + held-out half
     python -m benchmarks.calibrate --baseline     # also score the FR-15a naive judge
+    python -m benchmarks.calibrate --model openai/gpt-oss-120b --holdout-only --baseline
 
 **The split is the point.** The 2026-09-20 study reported kappa on the same 200
 cases a threshold was chosen from, which flatters the result. Cases are split
@@ -44,14 +45,17 @@ def _scores_path(prompt_version: str) -> Path:
     return Path(f"calibration/helpsteer2_judge_scores_{prompt_version}.jsonl")
 
 
-def _score_all(rows: list[dict], prompt_version: str, **judge_kwargs) -> dict[str, float | None]:
-    """Scores every row, caching per case so an interrupted run resumes."""
+def _score_all(
+    rows: list[dict], prompt_version: str, model: str | None = None, **judge_kwargs
+) -> dict[str, float | None]:
+    """Scores every row, caching per case so an interrupted run resumes.
+    `prompt_version` names the cache, so it must change whenever `model` does."""
     path = _scores_path(prompt_version)
     done: dict[str, dict] = {}
     if path.exists():
         done = {s["id"]: s for s in map(json.loads, path.read_text().splitlines())}
 
-    llm_call = groq_llm_call()
+    llm_call = groq_llm_call(model=model)
     with path.open("a") as out:
         for i, row in enumerate(rows):
             if row["id"] in done:
@@ -100,6 +104,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", action="store_true",
                         help="also score the FR-15a naive judge on the same held-out cases")
+    parser.add_argument("--model", default=None,
+                        help="judge model (default: SAGWA_JUDGE_MODEL, else the harness default); "
+                             "both judges use it, so FR-15a still isolates the prompt")
+    parser.add_argument("--holdout-only", action="store_true",
+                        help="score only the held-out half: half the cost, no tune-half report")
     args = parser.parse_args()
     load_dotenv()
 
@@ -107,16 +116,25 @@ def main() -> None:
     tune, holdout = _split(rows)
     print(f"{len(rows)} labels -> tune={len(tune)} holdout={len(holdout)}")
 
-    scores = _score_all(rows, JUDGE_PROMPT_VERSION)
-    print("\n=== TUNE half (iterate the prompt against this; NOT the reported number)")
-    _report(tune, scores, f"{JUDGE_PROMPT_VERSION}-tune")
+    # A model override is part of the judge's identity: its scores get their
+    # own cache and artifact, never mixed with the default model's.
+    suffix = f"@{args.model.split('/')[-1]}" if args.model else ""
+    version, naive_version = JUDGE_PROMPT_VERSION + suffix, NAIVE_PROMPT_VERSION + suffix
+
+    scores = _score_all(holdout if args.holdout_only else rows, version, model=args.model)
+    if not args.holdout_only:
+        print("\n=== TUNE half (iterate the prompt against this; NOT the reported number)")
+        _report(tune, scores, f"{version}-tune")
     print("\n=== HOLDOUT half (the honest number — no decisions were made on these cases)")
-    _report(holdout, scores, JUDGE_PROMPT_VERSION)
+    _report(holdout, scores, version)
 
     if args.baseline:
+        # Held-out only: FR-15a reports on the held-out half, so scoring the
+        # tune half for the naive judge would spend budget on unused numbers.
         print("\n=== FR-15a baseline: naive one-line judge, same model/temperature")
-        naive = _score_all(rows, NAIVE_PROMPT_VERSION, rubric=NAIVE_RUBRIC, few_shot=NAIVE_FEW_SHOT)
-        _report(holdout, naive, NAIVE_PROMPT_VERSION, baseline_name="naive_judge")
+        naive = _score_all(holdout, naive_version, model=args.model,
+                           rubric=NAIVE_RUBRIC, few_shot=NAIVE_FEW_SHOT)
+        _report(holdout, naive, naive_version, baseline_name="naive_judge")
 
 
 if __name__ == "__main__":

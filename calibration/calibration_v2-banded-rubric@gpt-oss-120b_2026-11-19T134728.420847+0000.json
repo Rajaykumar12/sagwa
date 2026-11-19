@@ -1,0 +1,14 @@
+{
+  "judge_prompt_version": "v2-banded-rubric@gpt-oss-120b",
+  "n": 100,
+  "accuracy": 0.72,
+  "cohen_kappa": 0.43999999999999995,
+  "confusion_matrix": {
+    "pass|pass": 39,
+    "pass|fail": 11,
+    "fail|fail": 33,
+    "fail|pass": 17
+  },
+  "created_at": "2026-11-19T13:47:28.420847+00:00",
+  "baseline_name": null
+}
