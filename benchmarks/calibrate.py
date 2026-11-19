@@ -11,6 +11,10 @@ cases a threshold was chosen from, which flatters the result. Cases are split
 against `tune`, and report the number from `holdout`, which no decision was
 made on.
 
+Since judge v3 (2026-11-19) the default judge IS the naive prompt below, so
+`--baseline` re-measures the same judge under its old name. To re-run the v2
+comparison, score `BANDED_RUBRIC_V2` from `sagwa.judge.harness`.
+
 FR-15a: `--baseline` scores a naive one-line judge — no rubric, no bands, no
 examples — through the same model, temperature and parser. Only the prompt
 differs, so the reported delta isolates the rubric rather than model choice

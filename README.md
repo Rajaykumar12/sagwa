@@ -142,13 +142,13 @@ Your repo needs an adapter, a golden set and a gate config. The result is posted
 The metrics dominate the cost, not your pipeline. A 50-case RAG run with RAGAS uses about 170K tokens, which is a full day of `gpt-oss-120b`'s free tier (200K/day) and takes around an hour. Two env vars help:
 
 - `SAGWA_RAGAS_METRICS=faithfulness`: one RAGAS metric instead of two. Set it to `""` for none, which brings a 50-case run down to minutes.
-- `SAGWA_JUDGE_MODEL`, `SAGWA_RAGAS_MODEL`, `SAGWA_CLUSTER_MODEL`: route each role to a different model so each draws on its own rate limit.
+- `SAGWA_JUDGE_MODEL`, `SAGWA_RAGAS_MODEL`, `SAGWA_CLUSTER_MODEL`: route each role to a different model so each draws on its own rate limit. The judge defaults to `gpt-oss-120b`, the model it was calibrated on; moving it to a smaller model saves quota but gives you an unmeasured judge.
 
 A practical split: a small, fast golden set on every PR, the full set nightly or on merges to main.
 
 ## Limitations
 
-- **The judge is not trustworthy enough to gate alone.** On 100 held-out human labels, the default rubric judge reaches Cohen's κ 0.32–0.46 depending on prompt version and model, below the 0.70 target, and `require_calibration()` refuses to let it gate. A naive one-line judge did better (κ 0.66 on `gpt-oss-120b`, still short of 0.70); see `calibration/calibration_report.md` §7. Gate on the judge alongside reference metrics and RAGAS, never by itself.
+- **The judge is not trustworthy enough to gate alone.** The default judge (`v3-naive`: a one-line prompt on `gpt-oss-120b`) agrees with 100 held-out human labels at Cohen's κ 0.66, below the 0.70 target, so `require_calibration()` refuses to let it gate. It replaced a detailed rubric that scored 0.32–0.46; see `calibration/calibration_report.md` §7. Gate on the judge alongside reference metrics and RAGAS, never by itself.
 - **The regression evidence comes from public benchmarks** (HotpotQA, CNN/DailyMail in `benchmarks/`), not from a product's own traffic.
 - **This repo's own CI gates an offline pipeline**: Lead-3 summarization on CNN/DailyMail (`benchmarks/offline.py`), on reference and safety metrics only (`config/gates.ci.yaml`), so it needs no API key. A one-line Lead-3→Lead-1 PR passed every absolute threshold and was blocked by the baseline comparison ([#2](https://github.com/Rajaykumar12/sagwa/pull/2)); a no-op PR passed ([#1](https://github.com/Rajaykumar12/sagwa/pull/1)). CI does not gate an LLM target, because that needs a key and a token budget per PR.
 - **Clustering and dashboard are provisional:** `min_cluster_size` is untuned at real scale. The dashboard works on real runs but groups trends by adapter class and always judges failures by `config/gates.yaml`.

@@ -8,9 +8,9 @@
   all on `bridge` questions.
 - CnnDmSummarizer: news summarization, the second target type (PRD FR-3c).
 
-Target apps call `openai/gpt-oss-120b`, not the judge's `gpt-oss-20b`:
-Groq's free tier rate-limits per model, so this keeps the target's calls
-from eating the judge/RAGAS quota.
+Target apps call `openai/gpt-oss-120b`. The benchmark scripts pin the judge to
+`gpt-oss-20b` (its default is now 120b): Groq's free tier rate-limits per
+model, so this keeps the target's calls from eating the judge's quota.
 """
 import json
 import os

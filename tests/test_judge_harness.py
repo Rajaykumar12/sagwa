@@ -1,6 +1,7 @@
 from sagwa.judge.harness import (
+    BANDED_RUBRIC_V2,
     DEFAULT_JUDGE_MODEL,
-    DEFAULT_RUBRIC,
+    build_absolute_prompt,
     groq_llm_call,
     score_absolute,
     score_absolute_with_rationale,
@@ -74,15 +75,29 @@ def test_prompt_omits_reference_headings_when_case_has_none():
     assert "Context the answer had to rely on:" not in prompts[0]
 
 
-def test_rubric_defines_the_middle_of_the_scale_not_just_the_endpoints():
+def test_v2_rubric_defines_the_middle_of_the_scale_not_just_the_endpoints():
     # 22 of 38 false passes in the 2026-09-20 study sat at exactly 0.6, the
     # band the v1 rubric never described.
     for band in ("0.2", "0.4", "0.6", "0.8"):
-        assert f"{band} -" in DEFAULT_RUBRIC
+        assert f"{band} -" in BANDED_RUBRIC_V2
 
 
-def test_rubric_states_correctness_beats_fluency():
-    assert "NOT fluency" in DEFAULT_RUBRIC
+def test_v2_rubric_states_correctness_beats_fluency():
+    assert "NOT fluency" in BANDED_RUBRIC_V2
+
+
+def test_default_prompt_is_the_one_that_was_calibrated():
+    """The default judge's kappa (0.66) was measured as the FR-15a naive
+    baseline. That number only transfers if a case with no reference gets the
+    exact same prompt — a reworded default would be an unmeasured judge."""
+    from benchmarks.calibrate import NAIVE_FEW_SHOT, NAIVE_RUBRIC
+
+    measured = build_absolute_prompt("q", "a", rubric=NAIVE_RUBRIC, few_shot=NAIVE_FEW_SHOT)
+    assert build_absolute_prompt("q", "a") == measured
+
+
+def test_default_judge_model_is_the_calibrated_one():
+    assert DEFAULT_JUDGE_MODEL == "openai/gpt-oss-120b"
 
 
 def test_few_shot_can_be_emptied_for_the_naive_baseline_judge():

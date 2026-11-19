@@ -9,6 +9,7 @@ cd "/run/media/rajay/New Volume/Machine Learning/Sagwa"
 export PATH="$PWD/.venv/bin:$PATH"
 export DATABASE_URL="sqlite:///./benchmarks/benchmarks.db"
 export SAGWA_RAGAS_MODEL="openai/gpt-oss-120b"
+export SAGWA_JUDGE_MODEL="openai/gpt-oss-20b"
 export SAGWA_RAGAS_METRICS="faithfulness"
 export PYTHONUNBUFFERED=1
 OUT=benchmarks/out; mkdir -p "$OUT"

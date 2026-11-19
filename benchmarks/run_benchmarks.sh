@@ -9,10 +9,13 @@ cd "$(dirname "$0")/.."
 
 export DATABASE_URL="sqlite:///./benchmarks/benchmarks.db"
 # Groq's free tier rate-limits tokens per minute PER MODEL, so the three LLM
-# roles run on three models: targets and RAGAS on gpt-oss-120b, the judge on
-# gpt-oss-20b (calibration has to measure the same judge the gate uses).
+# roles run on separate models: targets and RAGAS on gpt-oss-120b, the judge on
+# gpt-oss-20b. The judge's default moved to 120b on 2026-11-19 (its calibrated
+# model), so it is pinned here: three roles on one 200K/day cap would not fit a
+# run. The cost is a judge whose kappa on 20b is lower (calibration_report §7).
 # context_precision is skipped because no gate config here reads it.
 export SAGWA_RAGAS_MODEL="openai/gpt-oss-120b"
+export SAGWA_JUDGE_MODEL="openai/gpt-oss-20b"   # keep the judge off 120b's daily cap, which targets + RAGAS use
 export SAGWA_RAGAS_METRICS="faithfulness"
 OUT=benchmarks/out
 mkdir -p "$OUT"

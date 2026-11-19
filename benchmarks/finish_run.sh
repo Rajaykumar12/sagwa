@@ -20,6 +20,7 @@ cd "$(dirname "$0")/.."
 export PATH="$PWD/.venv/bin:$PATH"
 export DATABASE_URL="sqlite:///./benchmarks/benchmarks.db"
 export SAGWA_RAGAS_MODEL="openai/gpt-oss-120b"   # same as v1
+export SAGWA_JUDGE_MODEL="openai/gpt-oss-20b"    # same as v1; the default moved to 120b
 export SAGWA_RAGAS_METRICS="faithfulness"        # same as v1
 export PYTHONUNBUFFERED=1
 OUT=benchmarks/out; mkdir -p "$OUT"

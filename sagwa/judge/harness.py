@@ -14,7 +14,12 @@ from typing import Callable
 LLMCall = Callable[[str], str]  # prompt -> raw text completion
 
 
-DEFAULT_JUDGE_MODEL = "openai/gpt-oss-20b"
+# 120b, not 20b: on 100 held-out human labels the same prompt scored kappa 0.44
+# on 120b vs 0.32 on 20b, and the default prompt below was measured on 120b
+# (calibration/calibration_report.md §7). The cost: on Groq's free tier the
+# judge now shares 120b's daily token cap with any target that also runs on
+# 120b. Set SAGWA_JUDGE_MODEL to move it, knowing that judge is unmeasured.
+DEFAULT_JUDGE_MODEL = "openai/gpt-oss-120b"
 
 
 def groq_llm_call(model: str | None = None) -> LLMCall:
@@ -62,16 +67,32 @@ def groq_llm_call(model: str | None = None) -> LLMCall:
 # Bumped whenever the rubric or prompt shape changes: a calibration result
 # (FR-14) is only valid for the version it was measured against, and
 # `metrics_json["judge"]["prompt_version"]` records which judge scored a case.
-JUDGE_PROMPT_VERSION = "v2-banded-rubric"
+JUDGE_PROMPT_VERSION = "v3-naive"
 
+# v3 (2026-11-19): the default is a one-line rubric with no examples. Measured
+# on 100 held-out human labels with gpt-oss-120b: kappa 0.66 [0.50, 0.80],
+# against 0.44 for the banded v2 rubric below on the same model and cases
+# (+0.22 [+0.10, +0.36]; calibration/calibration_report.md §7). v2's bands put
+# "partially helpful" at 0.6, on the pass line, while the human labels call it
+# a fail; a rubric is a claim about what each score means, and v2's disagreed.
+#
+# The expected answer and retrieved context are still shown when a case has
+# them (`build_absolute_prompt`). Without them, v1 rated a known-worse HotpotQA
+# candidate 0.22 higher. A case with neither gets exactly the prompt that was
+# measured. How the one-liner does WITH a reference is unmeasured, as is v2's.
+DEFAULT_RUBRIC = "Rate how good this answer is."
+DEFAULT_FEW_SHOT = ""
+
+# v2 ("v2-banded-rubric"), kept so its calibration stays reproducible: pass
+# `rubric=BANDED_RUBRIC_V2, few_shot=BANDED_FEW_SHOT_V2`.
+#
 # v1 ("Score how well the answer addresses the question", endpoints only)
-# measured kappa=0.450 against 200 human labels — below FR-15's 0.70 — and on a
-# real pipeline scored a *worse* candidate 0.22 higher, because it never saw
-# what a correct answer looks like. This version fixes the three causes named
-# in calibration/calibration_report.md §4: the scale's middle is defined, the
-# expected answer and retrieved context are shown when available, and grading
-# correctness over fluency is stated outright.
-DEFAULT_RUBRIC = (
+# measured kappa=0.450 against 200 human labels and on a real pipeline scored
+# a *worse* candidate 0.22 higher, because it never saw what a correct answer
+# looks like. v2 targeted the three causes named in the report's §4: the
+# scale's middle is defined, the expected answer and retrieved context are
+# shown, and grading correctness over fluency is stated outright.
+BANDED_RUBRIC_V2 = (
     "Score the answer from 0.0 to 1.0 using these bands:\n"
     "  1.0 - fully and correctly answers the question; matches the expected answer when one is given\n"
     "  0.8 - correct and useful, with only minor omissions or extra wording\n"
@@ -89,7 +110,7 @@ DEFAULT_RUBRIC = (
 # One clear pass, one clear fail, and — deliberately — one borderline case.
 # The 2026-09-20 calibration put 22 of 38 false passes in the band the judge
 # had no anchor for, so the middle of the scale is the example that matters.
-_FEW_SHOT = (
+BANDED_FEW_SHOT_V2 = (
     "Examples:\n"
     "Question: What year did the Ford Model T go on sale? | Expected: 1908 | Answer: 1908. -> 1.0\n"
     "Question: Who directed Jaws? | Expected: Steven Spielberg | "
@@ -124,7 +145,7 @@ def build_absolute_prompt(
     expected: str | None = None,
     context: str | None = None,
     rubric: str = DEFAULT_RUBRIC,
-    few_shot: str = _FEW_SHOT,
+    few_shot: str = DEFAULT_FEW_SHOT,
 ) -> str:
     """The graded prompt. `expected` and `context` are optional because not
     every golden case has them (a HelpSteer2 helpfulness label has neither) —
@@ -147,7 +168,7 @@ def score_absolute(
     expected: str | None = None,
     context: str | None = None,
     rubric: str = DEFAULT_RUBRIC,
-    few_shot: str = _FEW_SHOT,
+    few_shot: str = DEFAULT_FEW_SHOT,
 ) -> float | None:
     """Absolute rubric score in [0, 1], or `None` if the judge's response
     couldn't be parsed as a number in range — never silently coerced to 0.0,
@@ -162,7 +183,7 @@ def score_absolute_with_rationale(
     expected: str | None = None,
     context: str | None = None,
     rubric: str = DEFAULT_RUBRIC,
-    few_shot: str = _FEW_SHOT,
+    few_shot: str = DEFAULT_FEW_SHOT,
 ) -> tuple[float | None, str]:
     """Same as `score_absolute`, but also returns the judge's raw
     completion text (PRD FR-28 — dashboard drill-down wants the rationale,

@@ -1,6 +1,6 @@
 # Judge Calibration Report
 
-**Verdict (updated 2026-11-19): no judge tested clears κ ≥ 0.70, and the naive one-line judge beats the rubric.** On 100 held-out human labels, with the same model (`gpt-oss-120b`) and the same cases, the naive judge scores **κ = 0.66** [0.50, 0.80] against the v2 rubric's **κ = 0.44** [0.26, 0.61]: **Δκ = +0.22, 95% CI [+0.10, +0.36]**. FR-15a's comparison came out the opposite way to the one it was designed to show. See §7 for the full iteration history. `require_calibration()` still refuses every judge measured here.
+**Verdict (updated 2026-11-19): no judge tested clears κ ≥ 0.70, and the naive one-line judge beats the rubric.** On 100 held-out human labels, with the same model (`gpt-oss-120b`) and the same cases, the naive judge scores **κ = 0.66** [0.50, 0.80] against the v2 rubric's **κ = 0.44** [0.26, 0.61]: **Δκ = +0.22, 95% CI [+0.10, +0.36]**. FR-15a's comparison came out the opposite way to the one it was designed to show. See §7 for the full iteration history. `require_calibration()` still refuses every judge measured here. As a result, the default judge is now this naive prompt on `gpt-oss-120b` (`v3-naive`, §7).
 
 The sections below (§1–§6) are the original 2026-09-20 study of prompt v1 and are kept unchanged as the baseline record (FR-14).
 
@@ -119,6 +119,14 @@ The binarization calls helpfulness 2 ("partially helpful") a **fail**. The v2 ru
 - **The naive judge ran only on 120b.** Its 20b run hit the model's daily token cap at 109 of 200 cases. The comparison is valid because both judges share a model, but it is not the default judge model.
 - **0.66 is not a pass.** The point estimate is below 0.70 and the CI spans it.
 
-### Recommendation (not applied)
+### Decision (applied 2026-11-19): judge v3
 
-Switching the default judge is a product decision, and changing the prompt invalidates every stored `judge.score`. Recommended: make the naive prompt on `gpt-oss-120b` the default *general-quality* judge, keep v2 for reference-bearing tasks, and collect about 100 human labels on HotpotQA outputs to test v2 where it was designed to work. Until a judge clears 0.70 on held-out data, `judge.score` stays out of any gate by itself.
+The default judge is now **`v3-naive`**: the one-line rubric, no few-shot examples, on `gpt-oss-120b` (`sagwa/judge/harness.py`). For a case with no expected answer or context, its prompt is byte-for-byte the FR-15a naive prompt measured above (a unit test pins this), so its record is **κ = 0.66** [0.50, 0.80] on the held-out half (`calibration_v3-naive_*.json`, produced by `python -m benchmarks.calibrate --holdout-only` from those cached scores, with no new judge calls).
+
+What this does and doesn't change:
+
+- **It is still not a gating judge.** 0.66 < 0.70, so `require_calibration("v3-naive")` raises. `judge.score` keeps gating only alongside reference metrics and RAGAS.
+- **The expected answer and retrieved context are still shown when present.** That is the one piece of v2 with direct evidence behind it (v1 inverted the HotpotQA regression without them). How v3 behaves *with* a reference is unmeasured, and closing that needs human labels on HotpotQA outputs.
+- **Stored scores are not comparable across versions.** Every `judge.score` in `benchmarks/benchmarks.db` came from v1 or v2, and each case records `metrics_json["judge"]["prompt_version"]`. Don't diff a v3 run against them on `judge.score`.
+- **Cost:** the default judge now shares `gpt-oss-120b`'s 200K-token daily cap with anything else on 120b. The benchmark scripts pin `SAGWA_JUDGE_MODEL=openai/gpt-oss-20b` to keep their quota split, which means those runs use a judge with no held-out measurement of its own.
+- v2 stays in the code as `BANDED_RUBRIC_V2` / `BANDED_FEW_SHOT_V2`, so its numbers remain reproducible.

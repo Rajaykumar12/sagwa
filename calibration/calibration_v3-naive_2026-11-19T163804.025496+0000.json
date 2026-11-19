@@ -1,0 +1,14 @@
+{
+  "judge_prompt_version": "v3-naive",
+  "n": 100,
+  "accuracy": 0.83,
+  "cohen_kappa": 0.6599999999999999,
+  "confusion_matrix": {
+    "pass|pass": 43,
+    "pass|fail": 7,
+    "fail|fail": 40,
+    "fail|pass": 10
+  },
+  "created_at": "2026-11-19T16:38:04.025496+00:00",
+  "baseline_name": null
+}
