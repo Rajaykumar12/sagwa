@@ -4,10 +4,12 @@
 # baseline, so the check answers "is this PR worse than main?" — not just
 # "does this run clear a fixed threshold?".
 #
-# CAVEAT (docs/STATUS.md): this still evaluates the `stub` target, because a
-# real target needs a GROQ_API_KEY secret and a token budget per run. Point
-# `target`/`dataset` at benchmarks.adapters:HotpotV1 + golden_sets/hotpotqa.jsonl
-# once that secret exists — nothing else here changes.
+# The target is a real pipeline on real data: Lead-3 extractive summarization
+# over the CNN/DailyMail golden set (benchmarks/offline.py). It is offline and
+# deterministic, so it needs no API key, costs nothing per PR, and any change
+# in the verdict is caused by the PR. Judge/RAGAS metrics are not gated here
+# (config/gates.ci.yaml); to gate an LLM target, point `target`/`dataset` at it
+# and pass `GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}` as env.
 name: eval-gate
 
 on:
@@ -27,8 +29,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./ # the action at the repo root
         with:
-          target: stub
-          dataset: golden_sets/example.jsonl
+          target: benchmarks.offline:LeadSummarizer
+          dataset: golden_sets/cnndm.jsonl
           gates-config: config/gates.ci.yaml
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
