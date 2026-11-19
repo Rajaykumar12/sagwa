@@ -161,7 +161,18 @@ def aggregate_metric(results: list[Result], metric_path: str) -> float | None:
     NaN counts as absent, not as a value: RAGAS returns NaN for a case it
     can't score (e.g. faithfulness of "I don't know", which has no claims
     to check), and a single NaN would otherwise poison the mean and fail
-    every gate on that metric."""
+    every gate on that metric.
+
+    A metric the registry declares `run_level` (e.g. cost per successful
+    task, a ratio of two run totals) is computed by its own aggregator over
+    all of the run's results instead. A path the registry doesn't know is
+    averaged, so a gate can still target any dotted path."""
+    from sagwa.metrics.registry import METRICS  # local: keeps `import sagwa.gate` light
+
+    spec = METRICS.get(metric_path)
+    if spec is not None and spec.aggregation == "run_level":
+        return spec.aggregator(results)
+
     values = []
     for result in results:
         if result.error is not None:
@@ -199,10 +210,9 @@ def evaluate_regression(
     gate and `sagwa diff` can never disagree about what regressed.
 
     Limitation worth knowing: the diff engine computes deltas only for the
-    metric paths it knows (`sagwa.diff._CONTINUOUS_METRIC_PATHS` and
-    `_BINARY_METRIC_PATHS`). A gate configured on some other path keeps its
-    absolute threshold but gets no baseline comparison — add the path there
-    to make it comparable.
+    per-case metric paths declared in `sagwa/metrics/registry.py`. A gate
+    configured on some other path keeps its absolute threshold but gets no
+    baseline comparison — declare the path there to make it comparable.
     """
     from sagwa.diff import diff_runs  # local: sagwa.diff imports sagwa.gate
 

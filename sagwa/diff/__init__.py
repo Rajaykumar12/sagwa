@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sagwa.gate._predicate import _get_metric, case_passes  # re-exported: sagwa.diff.case_passes
+from sagwa.metrics.registry import metric_paths
 from sagwa.storage import Result
 
 __all__ = [
@@ -38,23 +39,10 @@ __all__ = [
     "format_table",
 ]
 
-_CONTINUOUS_METRIC_PATHS = (
-    "reference.fuzzy_match",
-    "reference.rouge_l_f1",
-    "reference.embedding_similarity",
-    "classification.precision",
-    "classification.recall",
-    "classification.f1",
-    "ragas.faithfulness",
-    "ragas.context_precision",
-    "judge.score",
-)
-_BINARY_METRIC_PATHS = (
-    "reference.exact_match",
-    "classification.exact_set_match",
-    "safety.pii.flagged",
-    "safety.toxicity.flagged",
-)
+# Derived from the registry, never listed here: a metric declared in
+# sagwa/metrics/registry.py is diffed, and one that isn't, isn't.
+_CONTINUOUS_METRIC_PATHS = metric_paths("continuous")
+_BINARY_METRIC_PATHS = metric_paths("binary")
 
 
 @dataclass
