@@ -74,15 +74,14 @@ runs:
       # ref the workflow asked for.
       run: pip install "${GITHUB_ACTION_PATH}[${{ inputs.extras }}]"
 
-    - name: Run migrations
-      shell: bash
-      # `sagwa migrate`, not `alembic upgrade head`: the consuming repo has no
-      # alembic.ini, and the migrations ship inside the installed package.
-      run: sagwa migrate
-
     # A PR needs main's run database to compare against. Absent (first run ever,
     # or older than GitHub's 90-day artifact retention), the gate still runs on
     # absolute thresholds — it says so rather than failing mysteriously.
+    #
+    # Runs BEFORE migrations: `gh run download` refuses to overwrite an existing
+    # sagwa.db, so migrating first made every download fail (silently, under
+    # continue-on-error) and every PR gated without its baseline. Migrating
+    # after the download also upgrades a baseline built by an older schema.
     - name: Download baseline (pull_request only)
       if: github.event_name == 'pull_request'
       shell: bash
@@ -108,7 +107,19 @@ runs:
           exit 0
         fi
         echo "Baseline from workflow run $RUN_ID"
-        gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name sagwa-baseline
+        # Into a scratch dir, then moved: a stale sagwa.db in the workspace must
+        # never block the download (the failure mode described above).
+        if ! gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name sagwa-baseline --dir "$RUNNER_TEMP/sagwa-baseline"; then
+          echo "::warning::Could not download the sagwa-baseline artifact from run $RUN_ID; gating on absolute thresholds only."
+          exit 0
+        fi
+        mv -f "$RUNNER_TEMP/sagwa-baseline/sagwa.db" "$RUNNER_TEMP/sagwa-baseline/baseline_run_id.txt" .
+
+    - name: Run migrations
+      shell: bash
+      # `sagwa migrate`, not `alembic upgrade head`: the consuming repo has no
+      # alembic.ini, and the migrations ship inside the installed package.
+      run: sagwa migrate
 
     - name: Evaluate
       id: run
