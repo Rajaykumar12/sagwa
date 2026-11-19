@@ -17,7 +17,7 @@ from sagwa.adapters.base import AdapterResult
 
 # How many leading sentences make the summary. Changing this is the kind of
 # one-line "make summaries shorter" PR the CI gate exists to judge.
-LEAD_SENTENCES = 3
+LEAD_SENTENCES = 1
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
