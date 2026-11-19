@@ -27,3 +27,6 @@ benchmarks/out/*.log
 
 # Browser-automation scratch output
 .playwright-mcp/
+
+# Local agent run logs and JSON (examples/agent)
+examples/agent/out/

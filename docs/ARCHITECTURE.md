@@ -16,7 +16,7 @@ forever with no request timeout, and clustering crashing below `min_cluster_size
 
 | Layer | PRD requirement | Status |
 |---|---|---|
-| Golden-set schema/loader | FR-1, FR-2, FR-3 | ✅ Built, tested (`sagwa/datasets/`) |
+| Golden-set schema/loader | FR-1, FR-2, FR-3 | ✅ Built, tested (`sagwa/datasets/`). Task type `agentic` adds `success_criteria` (answer patterns, required/forbidden tools, step limit, no step errors), checked deterministically rather than by the judge, and `expected_tools` |
 | Run-history storage | FR-6, FR-7, FR-7a | ✅ Built, tested (`sagwa/storage/`); `results.error` added (migration 0002) for per-case failure capture; `trace_steps` added (migration 0003): one row per step of an agentic case's trajectory, joined on `result_id` |
 | Metric registry | FR-16, FR-23 | ✅ Built, tested (`sagwa/metrics/registry.py`). The single declaration of every metric path: its kind (picks diff's significance test), direction, and aggregation (`mean`, or `run_level` with its own aggregator for ratio metrics such as cost per success). `sagwa diff` reads its metric list from here instead of keeping its own, which twice dropped a real metric silently. A test fails if `compute_metrics` emits a numeric metric the registry doesn't declare |
 | Target-adapter contract | FR-3a | ✅ Built (`sagwa/adapters/base.py`) — and, as of this pass, genuinely pluggable: `sagwa/cli.py` has no hardcoded knowledge of any specific target pipeline (see §2) |
@@ -94,6 +94,7 @@ sagwa/
 ├── dashboard/            # queries.py (testable) + app.py (Streamlit) — trends, cluster browser, case drill-down (FR-26..28)
 └── _embedding.py         # shared lazy sentence-transformers loader (metrics/reference.py and clustering both use it)
 examples/adapters/       # reference adapter implementations, deliberately outside sagwa/ (see its README)
+examples/agent/          # Brindle Home: a hand-rolled multi-agent reference app (planner, researcher with tools, writer, reviewer) over a seeded fake retailer, plus 4 single-change regression variants; builds golden_sets/agentic_sandbox.jsonl
 └── README.md              # how to plug in any ML project as a target pipeline
 golden_sets/            # versioned golden-set JSONL files: 50-case hotpotqa.jsonl and 30-case cnndm.jsonl (real, from public benchmarks), plus the 3-case example.jsonl and 30-case synthetic demo_synthetic.jsonl fixtures
 benchmarks/             # the public-benchmark targets: build.py (regenerates every golden set + calibration label file from Hugging Face, fixed seed), adapters.py (HotpotV1/V2, CnnDmSummarizer), calibrate.py, per-benchmark gate configs, run_benchmarks.sh

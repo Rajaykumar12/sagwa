@@ -29,6 +29,16 @@ def q(sql: str):
     return DB.execute(sql).fetchone()
 
 
+def top(sql: str) -> str:
+    """The top-ranked value of a `SELECT label, count ... ORDER BY count DESC`,
+    refusing a tie: a tied "which is the most" question has no single right
+    answer, so an agent that correctly reports the tie would be marked wrong."""
+    rows = DB.execute(sql).fetchall()
+    if len(rows) > 1 and rows[0][1] == rows[1][1]:
+        raise ValueError(f"tied ranking, not a fair question: {rows[:3]}")
+    return rows[0][0]
+
+
 def money(x: float) -> str:
     """Regex for $1,234.50 written with or without the comma, $, or trailing zero."""
     whole, cents = f"{x:.2f}".split(".")
@@ -68,8 +78,9 @@ oid, status = q("SELECT order_id, status FROM orders WHERE status = 'returned' O
 case("database_tasks", f"What is the status of order {oid}?", contains=[status], tools=["order_db"])
 grace = q("SELECT count(*) FROM orders WHERE customer = 'Grace Kim'")[0]
 case("database_tasks", "How many orders has Grace Kim placed in total?", matches=number(grace), tools=["order_db"])
-region, _ = q("SELECT region, count(*) c FROM orders WHERE status = 'cancelled' GROUP BY region ORDER BY c DESC LIMIT 1")
-case("database_tasks", "Which region has the most cancelled orders?", contains=[region], tools=["order_db"])
+# Cancelled orders tie (South and North, 7 each), so ask about late shipments.
+region = top("SELECT region, count(*) c FROM orders WHERE shipped_date > promised_ship_date GROUP BY region ORDER BY c DESC")
+case("database_tasks", "Which region has the most orders that shipped later than promised?", contains=[region], tools=["order_db"])
 skillets = q("SELECT sum(quantity) FROM orders WHERE sku = 'BH-302' AND status != 'cancelled'")[0]
 case("database_tasks", "How many Cast Iron Skillets have been sold, not counting cancelled orders?",
      matches=number(skillets), tools=["order_db"])
@@ -80,7 +91,7 @@ case("database_tasks", "What was the average order total for non-cancelled order
 open_orders = q("SELECT count(*) FROM orders WHERE status IN ('processing', 'shipped')")[0]
 case("database_tasks", "How many orders are currently processing or shipped but not yet delivered?",
      matches=number(open_orders), tools=["order_db"])
-top_customer, _ = q("SELECT customer, count(*) c FROM orders GROUP BY customer ORDER BY c DESC, customer LIMIT 1")
+top_customer = top("SELECT customer, count(*) c FROM orders GROUP BY customer ORDER BY c DESC")
 case("database_tasks", "Which customer has placed the most orders?", contains=[top_customer], tools=["order_db"])
 sept = q("SELECT count(*) FROM orders WHERE delivered_date LIKE '2026-09-%'")[0]
 case("database_tasks", "How many orders were delivered in September 2026?", matches=number(sept), tools=["order_db"])
