@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Callable
 
-from sagwa.adapters.base import AdapterResult, TargetAdapter
+from sagwa.adapters.base import AgentAdapter, AgentRun, TargetAdapter, to_agent_run
 from sagwa.datasets.schema import GoldenCase
 
 
@@ -21,15 +21,18 @@ class CaseOutcome:
     """Result of running one golden-set case: either `result` is populated,
     or `error` is — never both. A raised adapter exception is captured here
     rather than propagated, so one bad case doesn't discard results for
-    every other case in the run."""
+    every other case in the run.
+
+    `result` is always an `AgentRun`: a plain adapter's `AdapterResult` is
+    lifted with an empty trajectory, so downstream code handles one type."""
 
     case: GoldenCase
-    result: AdapterResult | None
+    result: AgentRun | None
     error: str | None
 
 
 def run_cases(
-    adapter: TargetAdapter,
+    adapter: TargetAdapter | AgentAdapter,
     cases: list[GoldenCase],
     max_concurrency: int = 5,
     on_outcome: Callable[[CaseOutcome], None] | None = None,
@@ -44,7 +47,7 @@ def run_cases(
 
     def _run_one(case: GoldenCase) -> CaseOutcome:
         try:
-            return CaseOutcome(case=case, result=adapter.run(case.input), error=None)
+            return CaseOutcome(case=case, result=to_agent_run(adapter.run(case.input)), error=None)
         except Exception as e:  # noqa: BLE001 — deliberately broad: any adapter
             # failure becomes a recorded per-case error, not a crashed run.
             return CaseOutcome(case=case, result=None, error=f"{type(e).__name__}: {e}")

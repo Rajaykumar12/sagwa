@@ -17,7 +17,8 @@ forever with no request timeout, and clustering crashing below `min_cluster_size
 | Layer | PRD requirement | Status |
 |---|---|---|
 | Golden-set schema/loader | FR-1, FR-2, FR-3 | ✅ Built, tested (`sagwa/datasets/`) |
-| Run-history storage | FR-6, FR-7, FR-7a | ✅ Built, tested (`sagwa/storage/`); `results.error` added (migration 0002) for per-case failure capture |
+| Run-history storage | FR-6, FR-7, FR-7a | ✅ Built, tested (`sagwa/storage/`); `results.error` added (migration 0002) for per-case failure capture; `trace_steps` added (migration 0003): one row per step of an agentic case's trajectory, joined on `result_id` |
+| Metric registry | FR-16, FR-23 | ✅ Built, tested (`sagwa/metrics/registry.py`). The single declaration of every metric path: its kind (picks diff's significance test), direction, and aggregation (`mean`, or `run_level` with its own aggregator for ratio metrics such as cost per success). `sagwa diff` reads its metric list from here instead of keeping its own, which twice dropped a real metric silently. A test fails if `compute_metrics` emits a numeric metric the registry doesn't declare |
 | Target-adapter contract | FR-3a | ✅ Built (`sagwa/adapters/base.py`) — and, as of this pass, genuinely pluggable: `sagwa/cli.py` has no hardcoded knowledge of any specific target pipeline (see §2) |
 | Stub adapter | — (plumbing validation) | ✅ Built — the one zero-config, always-available target |
 | Real target pipelines | FR-3b, FR-3c | ✅ `benchmarks/adapters.py`: `HotpotV1`/`HotpotV2` (RAG-QA over 492 pooled HotpotQA paragraphs, dense retrieval via the shared `sagwa/_embedding.py` model) and `CnnDmSummarizer` (FR-3c's second task type). **All three have now run end to end for real** (2026-09-20/22): v1 (50 cases), v2 (50 cases, 0 errors) and the summarizer (30 cases, gate passed). The v1→v2 diff caught a real regression — see [STATUS.md §2a](./STATUS.md). Retrieval choice was measured, not assumed: at top_k=3, dense retrieval finds both supporting paragraphs for 32/50 questions vs BM25's 23 and TF-IDF's 4 |
@@ -81,9 +82,9 @@ RAGAS (see §1), judge (Groq via `langchain-groq`), clustering (`sentence-transf
 ```
 sagwa/
 ├── cli.py            # `sagwa run|diff|gate` entry points + `_load_adapter_class` (the pluggability mechanism)
-├── adapters/          # TargetAdapter protocol + AdapterResult; stub only — no other pipeline baked in
+├── adapters/          # TargetAdapter/AgentAdapter protocols, AdapterResult, AgentRun + AgentStep; stub only — no other pipeline baked in
 ├── datasets/           # GoldenCase pydantic schema + JSONL loader/validator
-├── storage/            # SQLAlchemy models (Run, Result) + session factory (reads DATABASE_URL)
+├── storage/            # SQLAlchemy models (Run, Result, TraceStep) + session factory (reads DATABASE_URL)
 ├── runner/             # bounded-concurrency case execution (sagwa/runner/__init__.py::run_cases)
 ├── metrics/            # reference.py, classification.py, safety.py, judge_metrics.py, ragas_metrics.py — all live
 ├── judge/              # harness.py (absolute/pairwise scoring); calibration.py (kappa, artifacts, gate refusal)
@@ -96,7 +97,7 @@ examples/adapters/       # reference adapter implementations, deliberately outsi
 └── README.md              # how to plug in any ML project as a target pipeline
 golden_sets/            # versioned golden-set JSONL files: 50-case hotpotqa.jsonl and 30-case cnndm.jsonl (real, from public benchmarks), plus the 3-case example.jsonl and 30-case synthetic demo_synthetic.jsonl fixtures
 benchmarks/             # the public-benchmark targets: build.py (regenerates every golden set + calibration label file from Hugging Face, fixed seed), adapters.py (HotpotV1/V2, CnnDmSummarizer), calibrate.py, per-benchmark gate configs, run_benchmarks.sh
-migrations/              # Alembic migrations for the run-history schema (0001 initial, 0002 adds results.error)
+migrations/              # Alembic migrations for the run-history schema (0001 initial, 0002 adds results.error, 0003 adds trace_steps)
 calibration/             # judge calibration: 200 HelpSteer2 human labels, per-judge-version score caches, versioned κ artifacts, calibration_report.md
 config/gates.yaml        # default CI gate thresholds (FR-25), read by `sagwa gate`, `sagwa diff` and `sagwa cluster`; benchmarks/ ships its own per-target configs
 docs/                    # PRD.md (what & why), ARCHITECTURE.md (this file), STATUS.md (the tracker), AGENTIC_PRD.md (future scope), adr/ (decision log)
@@ -106,7 +107,7 @@ docs/                    # PRD.md (what & why), ARCHITECTURE.md (this file), STA
 
 **Golden-set row** (`sagwa/datasets/schema.py`, `GoldenCase`): `id, input, expected_output?, expected_labels?, task_type ∈ {rag_qa, summarization, classification}, tags[]`. `id` must be stable across dataset revisions — it's the join key for future diffing (FR-17).
 
-**Adapter contract** (`sagwa/adapters/base.py`): any target pipeline implements `TargetAdapter.run(case_input: str) -> AdapterResult`, where `AdapterResult = {answer, context, latency_ms, tokens, cost_usd}`. Zero required changes to the target's own codebase (FR-3a) — and, symmetrically, zero required changes to Sagwa's own codebase either, via the `module.path:ClassName` loading mechanism (§2).
+**Adapter contract** (`sagwa/adapters/base.py`): any target pipeline implements `TargetAdapter.run(case_input: str) -> AdapterResult`, where `AdapterResult = {answer, context, latency_ms, tokens, cost_usd}`. Zero required changes to the target's own codebase (FR-3a) — and, symmetrically, zero required changes to Sagwa's own codebase either, via the `module.path:ClassName` loading mechanism (§2). An agentic target implements `AgentAdapter` and returns an `AgentRun`, a subclass of `AdapterResult` that adds `trajectory: list[AgentStep]` (agent turns, tool calls, handoffs). The runner lifts every plain result into an `AgentRun` with an empty trajectory, so storage handles one type, and `sagwa run` writes each step to `trace_steps`.
 
 **Run/Result schema** (`sagwa/storage/models.py`): `Run` pins `sagwa_git_sha`, `target_pipeline_git_sha` (nullable — populated once an external adapter reports it), `dataset_sha256`, `model`, `status`. `Result` rows are per-case, carrying `metrics_json` (empty dict until the metrics layer exists) and `trace_id` (nullable). Both tables are append-only — nothing is ever updated in place after a run completes.
 

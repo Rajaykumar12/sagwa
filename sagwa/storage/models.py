@@ -71,3 +71,33 @@ class Result(Base):
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     run: Mapped["Run"] = relationship(back_populates="results")
+    trace_steps: Mapped[list["TraceStep"]] = relationship(
+        back_populates="result", order_by="TraceStep.seq"
+    )
+
+
+class TraceStep(Base):
+    """One step of an agentic case's trajectory (docs/AGENTIC_PRD.md Phase 0).
+
+    Normalized, one row per step, rather than a JSON blob on `results`, so
+    trajectory metrics and the trace viewer can query steps directly. A
+    non-agentic case has no rows here. `Result.trace_id` stays reserved for an
+    external tracing system (ADR-0002); steps join on `result_id`."""
+
+    __tablename__ = "trace_steps"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    result_id: Mapped[str] = mapped_column(ForeignKey("results.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)  # 0-based position in the trajectory
+    step_type: Mapped[str] = mapped_column(String)  # "agent" | "tool" | "handoff"
+    name: Mapped[str] = mapped_column(String)
+
+    input: Mapped[str | None] = mapped_column(String, nullable=True)
+    output: Mapped[str | None] = mapped_column(String, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    result: Mapped["Result"] = relationship(back_populates="trace_steps")
