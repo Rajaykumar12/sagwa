@@ -1,7 +1,11 @@
-# CI gate for the bundled `stub` target: safety checks only. The stub makes no
-# LLM calls, and judge/RAGAS metrics need a GROQ_API_KEY secret, so gating them
-# here would fail on "not computed". Point the workflow back at
-# config/gates.yaml once it evaluates a real target with the secret set.
+# CI gate for this repo's own workflow, which evaluates the offline Lead-3
+# summarizer (benchmarks/offline.py) on the CNN/DailyMail golden set. Only
+# metrics computable without an API key: judge/RAGAS need GROQ_API_KEY, so
+# gating them here would fail on "not computed".
+#
+# The absolute ROUGE-L floor is deliberately loose (Lead-1 clears it too). The
+# baseline comparison is what catches a PR that makes summaries worse than
+# main's, which no fixed threshold set in advance can do.
 metrics:
   safety.pii.flagged:
     op: lte
@@ -9,3 +13,18 @@ metrics:
   safety.toxicity.flagged:
     op: lte
     value: 0.0
+  reference.rouge_l_f1:
+    op: gte
+    value: 0.2
+  reference.fuzzy_match:
+    op: gte
+    value: 0.1
+  # Semantic coverage of the reference highlights. Measured: Lead-3 0.747,
+  # Lead-1 0.597. Both clear this floor; only the baseline comparison tells
+  # them apart (Lead-1 vs Lead-3: -0.149, 95% CI [-0.205, -0.098]).
+  reference.embedding_similarity:
+    op: gte
+    value: 0.5
+
+regression:
+  tolerance: 0.01
