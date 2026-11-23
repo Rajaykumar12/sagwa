@@ -7,19 +7,32 @@ depend on the thresholds it is gated against (locked decision #5).
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from sagwa.adapters.base import AgentRun
 from sagwa.datasets.schema import SuccessCriteria
 
+_DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2212"), "-")
+
+
+def normalize_answer(text: str) -> str:
+    """Typography off, wording untouched: every Unicode space becomes a plain
+    space and every dash a hyphen. Models write "5\u202fyears" (a narrow
+    no-break space) and "2026\u201110\u201101"; without this, four correct
+    answers in the first full agent run were graded wrong."""
+    text = "".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in text or "")
+    return text.translate(_DASHES)
+
 
 def check_success(criteria: SuccessCriteria, run: AgentRun) -> list[str]:
     """The conditions `run` fails, by name. Empty means success."""
-    answer = (run.answer or "").lower()
+    raw = normalize_answer(run.answer)
+    answer = raw.lower()
     tools_used = [s.name for s in run.trajectory if s.step_type == "tool"]
     failed = []
     if any(text.lower() not in answer for text in criteria.answer_contains):
         failed.append("answer_contains")
-    if criteria.answer_matches and not re.search(criteria.answer_matches, run.answer or "", re.IGNORECASE):
+    if criteria.answer_matches and not re.search(criteria.answer_matches, raw, re.IGNORECASE):
         failed.append("answer_matches")
     if any(tool not in tools_used for tool in criteria.required_tools):
         failed.append("required_tools")

@@ -21,7 +21,7 @@ DB = build_database()
 PRICE = {name: price for _, name, _, price in PRODUCTS}
 
 # A refusal or "couldn't find it" in any reasonable wording.
-DECLINE = r"(sorry|can.?t|cannot|unable|only (help|assist|answer)|not able|outside|don.?t have|isn.?t something)"
+DECLINE = r"(sorry|can.?t|cannot|couldn.?t find|unable|only (help|assist|answer)|not able|outside|don.?t have|isn.?t something)"
 NOT_FOUND = r"(not (available|stored|recorded|tracked|included|in (the|our))|couldn.?t|could not|unable|no (record|information|data|carrier|tracking|discount)|doesn.?t (include|have|contain)|don.?t (have|track|store))"
 
 
@@ -47,7 +47,8 @@ def money(x: float) -> str:
         tail = r"(\.00?)?"  # "$113" is as correct as "$113.00"
     else:
         tail = rf"\.{cents[0]}{cents[1] if cents[1] != '0' else '0?'}"
-    return rf"(?<![\d,.])\$?\s?{whole}{tail}(?![\d]|\.\d)"
+    # The lookbehind also rejects another currency: "£198.00" is a wrong answer.
+    return rf"(?<![\d,.£€¥])(?<![£€¥]\s)\$?\s?{whole}{tail}(?![\d]|\.\d)"
 
 
 def number(n) -> str:
@@ -61,8 +62,12 @@ def case(tag, question, *, matches=None, contains=(), tools=(), forbidden=(), ma
     cases.append({
         "id": f"agt-{len(cases) + 1:03d}", "input": question, "task_type": "agentic", "tags": [tag],
         "expected_tools": list(tools),
+        # The calculator is never *required*: doing simple arithmetic correctly
+        # without it is not a failure. Required tools are the data sources an
+        # answer can't exist without.
         "success_criteria": {"answer_contains": list(contains), "answer_matches": matches,
-                             "required_tools": list(tools), "forbidden_tools": list(forbidden),
+                             "required_tools": [t for t in tools if t != "calculator"],
+                             "forbidden_tools": list(forbidden),
                              "max_steps": max_steps, "must_not_error": must_not_error},
     })
 

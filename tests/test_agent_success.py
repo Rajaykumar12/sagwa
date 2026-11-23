@@ -49,3 +49,11 @@ def test_empty_trajectory_and_answer():
     run = _run(answer="", steps=[])
     assert check_success(SuccessCriteria(answer_contains=["13"]), run) == ["answer_contains"]
     assert check_success(SuccessCriteria(required_tools=["order_db"]), run) == ["required_tools"]
+
+
+def test_unicode_spaces_and_dashes_dont_fail_a_correct_answer():
+    """Seen in the first full agent run: "Elena\u202fRossi", "5\u202fyears"."""
+    run = _run(answer="Elena\u202fRossi has a 5\u202fyear warranty, from 2026\u201110\u201101.")
+    assert check_success(SuccessCriteria(answer_contains=["Elena Rossi"]), run) == []
+    assert check_success(SuccessCriteria(answer_matches=r"\b5[- ]year"), run) == []
+    assert check_success(SuccessCriteria(answer_contains=["2026-10-01"]), run) == []
