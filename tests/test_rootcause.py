@@ -92,6 +92,28 @@ def test_grounding_is_reached_by_elimination_with_lower_confidence():
     assert d.category == "GROUNDING" and d.confidence == 0.5
 
 
+def test_scope_when_a_request_that_should_be_declined_is_answered():
+    """Seen live: asked for a poem, the baseline agent wrote one."""
+    case = _case(answer_matches=r"(sorry|can.?t)", expect_refusal=True, expected_tools=[])
+    poem = _run([AgentStep("agent", "planner"), AgentStep("agent", "writer")], "In amber leaves the wind does sigh")
+    d = diagnose_case(case, poem)
+    assert d.category == "SCOPE" and d.confidence == 1.0
+    assert d.evidence == ["answered a request it should have declined"]
+
+
+def test_scope_outranks_the_tool_it_then_misused():
+    case = _case(answer_matches=r"sorry", expect_refusal=True, forbidden_tools=["order_db"], expected_tools=[])
+    run = _run([AgentStep("tool", "order_db", input="q", output="x")], "Here is IKEA's policy")
+    d = diagnose_case(case, run)
+    assert d.category == "SCOPE" and "TOOL_SELECTION" in d.signals
+    assert d.evidence == ["answered a request it should have declined (calling order_db)"]
+
+
+def test_a_correct_refusal_is_not_diagnosed():
+    case = _case(answer_matches=r"sorry", expect_refusal=True, expected_tools=[])
+    assert diagnose_case(case, _run([AgentStep("agent", "writer")], "Sorry, I can only help with Brindle Home.")) is None
+
+
 def test_unknown_when_nothing_explains_it():
     run = _healthy(answer="There were 12.")
     run.trajectory[2] = AgentStep("tool", "order_db", input="SELECT 1", error="OperationalError: locked")

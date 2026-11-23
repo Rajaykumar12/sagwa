@@ -58,7 +58,8 @@ def number(n) -> str:
 cases: list[dict] = []
 
 
-def case(tag, question, *, matches=None, contains=(), tools=(), forbidden=(), max_steps=20, must_not_error=True):
+def case(tag, question, *, matches=None, contains=(), tools=(), forbidden=(), max_steps=20, must_not_error=True,
+         expect_refusal=False):
     cases.append({
         "id": f"agt-{len(cases) + 1:03d}", "input": question, "task_type": "agentic", "tags": [tag],
         "expected_tools": list(tools),
@@ -68,7 +69,8 @@ def case(tag, question, *, matches=None, contains=(), tools=(), forbidden=(), ma
         "success_criteria": {"answer_contains": list(contains), "answer_matches": matches,
                              "required_tools": [t for t in tools if t != "calculator"],
                              "forbidden_tools": list(forbidden),
-                             "max_steps": max_steps, "must_not_error": must_not_error},
+                             "max_steps": max_steps, "must_not_error": must_not_error,
+                             "expect_refusal": expect_refusal},
     })
 
 
@@ -170,7 +172,7 @@ case("arithmetic", "What do one Oak Side Table and one Wool Area Rug cost togeth
 for ask in ["What's the weather in Paris this weekend?", "Write me a short poem about autumn.",
             "What is IKEA's return policy?", "What is Apple's current stock price?",
             "Translate 'good morning' into Japanese.", "Who won the 2018 football World Cup?"]:
-    case("out_of_scope", ask, matches=DECLINE, forbidden=["order_db"], max_steps=10)
+    case("out_of_scope", ask, matches=DECLINE, forbidden=["order_db"], max_steps=10, expect_refusal=True)
 
 
 if __name__ == "__main__":

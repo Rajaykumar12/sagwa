@@ -19,6 +19,10 @@ class SuccessCriteria(BaseModel):
     forbidden_tools: list[str] = Field(default_factory=list)
     max_steps: Optional[int] = None
     must_not_error: bool = True  # no step in the trajectory may record an error
+    # The right answer is to decline (an out-of-scope request). Not a check of
+    # its own, since `answer_matches` says what a refusal looks like; it tells
+    # root-cause analysis that a failure here is a scope failure.
+    expect_refusal: bool = False
 
 
 class GoldenCase(BaseModel):

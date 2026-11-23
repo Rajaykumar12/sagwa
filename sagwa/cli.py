@@ -360,7 +360,7 @@ def rootcause(
 ):
     """Group an agentic run's failing cases by root cause, from a closed
     taxonomy (docs/AGENTIC_PRD.md Phase 5): INFINITE_RETRY, BUDGET_EXHAUSTED,
-    HANDOFF, TOOL_SELECTION, PLANNING, GROUNDING, UNKNOWN."""
+    SCOPE, HANDOFF, TOOL_SELECTION, PLANNING, GROUNDING, UNKNOWN."""
     from sagwa.rootcause import format_report, root_causes
 
     with get_session() as session:

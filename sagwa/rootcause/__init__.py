@@ -33,8 +33,11 @@ from sagwa.metrics.agent_success import check_success
 from sagwa.metrics.agent_trajectory import compute_trajectory_metrics
 
 # Precedence order: when several fire for one case, the first one is the cause.
-# A loop explains running out of steps; lost context explains a wrong answer.
-CATEGORIES = ("INFINITE_RETRY", "BUDGET_EXHAUSTED", "HANDOFF", "TOOL_SELECTION", "PLANNING", "GROUNDING", "UNKNOWN")
+# A loop explains running out of steps; answering what should have been
+# declined explains whatever tools it then called; lost context explains a
+# wrong answer.
+CATEGORIES = ("INFINITE_RETRY", "BUDGET_EXHAUSTED", "SCOPE", "HANDOFF", "TOOL_SELECTION", "PLANNING", "GROUNDING",
+              "UNKNOWN")
 
 _LOOP_THRESHOLD = 0.3       # agent.loop_rate: 3rd+ identical calls as a share of all calls
 _ACCURACY_FLOOR = 0.5       # agent.tool_call_accuracy below this is wrong-tool territory
@@ -100,6 +103,10 @@ def diagnose_case(case: GoldenCase, run: AgentRun, baseline: AgentRun | None = N
         limit = case.success_criteria.max_steps
         fired["BUDGET_EXHAUSTED"] = [f"{run.step_count} steps against a limit of {limit}"]
 
+    if case.success_criteria.expect_refusal:
+        fired["SCOPE"] = ["answered a request it should have declined"
+                          + (f" (calling {', '.join(sorted({s.name for s in tools}))})" if tools else "")]
+
     lossy = [s for s in run.trajectory if s.step_type == "handoff" and s.input is not None and s.output != s.input]
     if lossy and not (b and (b["handoff_loss_rate"] or 0) > 0):
         h = lossy[0]
@@ -136,6 +143,7 @@ def diagnose_case(case: GoldenCase, run: AgentRun, baseline: AgentRun | None = N
 _HYPOTHESIS = {
     "INFINITE_RETRY": "The agent keeps retrying a failing tool instead of giving up: nothing is capping retries.",
     "BUDGET_EXHAUSTED": "Cases run out of steps before finishing.",
+    "SCOPE": "The agent treats out-of-scope requests as in scope and answers them instead of declining.",
     "HANDOFF": "Context is lost between agents: a handoff passes on only part of what the sender produced.",
     "TOOL_SELECTION": "The agent calls the wrong tools. Check whether the tools' names and descriptions tell them apart.",
     "PLANNING": "The plan no longer includes a step the baseline ran, so that step is skipped.",
