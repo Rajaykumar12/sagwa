@@ -75,6 +75,21 @@ class Result(Base):
         back_populates="result", order_by="TraceStep.seq"
     )
 
+    def to_agent_run(self):
+        """This stored case as the `AgentRun` its adapter returned, trajectory
+        included, so trajectory metrics can be (re)computed from storage at
+        any time, with no model call."""
+        from sagwa.adapters.base import AgentRun, AgentStep
+
+        return AgentRun(
+            answer=self.output, context=self.context, latency_ms=self.latency_ms,
+            tokens=self.tokens, cost_usd=self.cost_usd,
+            trajectory=[AgentStep(s.step_type, s.name, input=s.input, output=s.output, latency_ms=s.latency_ms,
+                                  tokens=s.tokens, cost_usd=s.cost_usd, error=s.error,
+                                  metadata=s.metadata_json or {})
+                        for s in self.trace_steps],
+        )
+
 
 class TraceStep(Base):
     """One step of an agentic case's trajectory (docs/AGENTIC_PRD.md Phase 0).

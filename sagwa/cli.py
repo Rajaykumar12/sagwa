@@ -351,6 +351,31 @@ def cluster(
 
 
 @app.command()
+def rootcause(
+    run_id: str = typer.Option(..., help="Agentic run id whose failing cases to diagnose"),
+    baseline: str = typer.Option(
+        None, help="Known-good run of the same golden set, compared case by case (needed to see skipped steps)"
+    ),
+    output_json: Path = typer.Option(None, "--json", help="Write machine-readable JSON here"),
+):
+    """Group an agentic run's failing cases by root cause, from a closed
+    taxonomy (docs/AGENTIC_PRD.md Phase 5): INFINITE_RETRY, BUDGET_EXHAUSTED,
+    HANDOFF, TOOL_SELECTION, PLANNING, GROUNDING, UNKNOWN."""
+    from sagwa.rootcause import format_report, root_causes
+
+    with get_session() as session:
+        for rid in [run_id] + ([baseline] if baseline else []):
+            if session.get(Run, rid) is None:
+                typer.echo(f"Unknown run id: {rid}")
+                raise typer.Exit(1)
+        causes = root_causes(session, run_id, baseline_run_id=baseline)
+
+    typer.echo(format_report(causes))
+    if output_json is not None:
+        output_json.write_text(json.dumps([c.to_dict() for c in causes], indent=2))
+
+
+@app.command()
 def dashboard(port: int = typer.Option(8501, help="Port to serve the Streamlit dashboard on")):
     """Launch the Streamlit dashboard (PRD FR-26..FR-28)."""
     app_path = Path(__file__).parent / "dashboard" / "app.py"

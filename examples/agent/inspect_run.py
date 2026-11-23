@@ -11,7 +11,6 @@ import sys
 from collections import defaultdict
 from statistics import mean
 
-from sagwa.adapters.base import AgentRun, AgentStep
 from sagwa.datasets import load_golden_set
 from sagwa.metrics.agent_success import check_success
 from sagwa.metrics.agent_trajectory import compute_trajectory_metrics
@@ -20,16 +19,6 @@ from sagwa.storage import Result, Run, get_session
 CASES = {c.id: c for c in load_golden_set("golden_sets/agentic_sandbox.jsonl")}
 SHOWN = ["tool_call_accuracy", "tool_error_rate", "tool_retry_rate", "loop_rate",
          "recovery_rate", "handoff_loss_rate", "steps", "tokens"]
-
-
-def agent_run(result: Result) -> AgentRun:
-    return AgentRun(
-        answer=result.output, context=result.context, latency_ms=result.latency_ms,
-        tokens=result.tokens, cost_usd=result.cost_usd,
-        trajectory=[AgentStep(s.step_type, s.name, input=s.input, output=s.output, latency_ms=s.latency_ms,
-                              tokens=s.tokens, cost_usd=s.cost_usd, error=s.error, metadata=s.metadata_json or {})
-                    for s in result.trace_steps],
-    )
 
 
 def score(run_id: str, verbose: bool) -> None:
@@ -41,7 +30,7 @@ def score(run_id: str, verbose: bool) -> None:
         for r in results:
             if r.error:
                 continue
-            case, run = CASES[r.case_id], agent_run(r)
+            case, run = CASES[r.case_id], r.to_agent_run()
             failed = check_success(case.success_criteria, run)
             m = compute_trajectory_metrics(run, case.expected_tools)
             by_tag[case.tags[0]].append(not failed)

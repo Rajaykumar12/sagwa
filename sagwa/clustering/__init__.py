@@ -58,6 +58,42 @@ def failing_results(session, run_id: str, gates_config: dict) -> list[Result]:
     return [r for r in results if case_passes(r, gates_config) is False]
 
 
+def _error_type(error: str) -> str:
+    return error.split(":", 1)[0].strip() or "error"
+
+
+def trajectory_signature(result: Result) -> str:
+    """What an agentic case *did*, as clustering text (docs/AGENTIC_PRD.md
+    Phase 5): the step sequence with consecutive repeats collapsed ("tool
+    shipment_tracker x10 [ConnectionError]"), lossy handoffs, and the
+    success conditions it failed. Two cases that failed the same way get
+    near-identical signatures even when their questions have nothing in
+    common, which is what input+output text can't give."""
+    parts: list[str] = []
+    steps = list(result.trace_steps)
+    i = 0
+    while i < len(steps):
+        s, j = steps[i], i
+        while j + 1 < len(steps) and (steps[j + 1].step_type, steps[j + 1].name) == (s.step_type, s.name):
+            j += 1
+        run = steps[i:j + 1]
+        token = f"{s.step_type} {s.name}" + (f" x{len(run)}" if len(run) > 1 else "")
+        errors = sorted({_error_type(x.error) for x in run if x.error})
+        if errors:
+            token += f" [{', '.join(errors)}]"
+        if s.step_type == "handoff" and any(x.input is not None and x.output != x.input for x in run):
+            token += " [lossy]"
+        parts.append(token)
+        i = j + 1
+    task = (result.metrics_json or {}).get("task") or {}
+    failed = task.get("failed") or []
+    return " -> ".join(parts) + (f" | failed: {', '.join(failed)}" if failed else "")
+
+
+def _feature_text(result: Result, feature: str) -> str:
+    return trajectory_signature(result) if feature == "trajectory" else f"{result.input}\n{result.output}"
+
+
 def embed_texts(texts: list[str]):
     """Embeds `texts` with the shared sentence-transformers model (see
     `sagwa/_embedding.py`)."""
@@ -67,10 +103,13 @@ def embed_texts(texts: list[str]):
     return model.encode(texts)
 
 
-def cluster_failures(results: list[Result], min_cluster_size: int = 3) -> list[FailureCluster]:
-    """HDBSCAN over each failing case's `input + output` text. `-1` (HDBSCAN's
-    noise label) is kept as its own cluster rather than dropped, so every
-    case is accounted for."""
+def cluster_failures(
+    results: list[Result], min_cluster_size: int = 3, feature: str = "text"
+) -> list[FailureCluster]:
+    """HDBSCAN over each failing case's feature text: `input + output`
+    (`feature="text"`) or its trajectory signature (`"trajectory"`). `-1`
+    (HDBSCAN's noise label) is kept as its own cluster rather than dropped,
+    so every case is accounted for."""
     import hdbscan
 
     if min_cluster_size < 2:
@@ -89,7 +128,7 @@ def cluster_failures(results: list[Result], min_cluster_size: int = 3) -> list[F
         # scoreable case behind (2026-09-20).
         return []
 
-    texts = [f"{r.input}\n{r.output}" for r in results]
+    texts = [_feature_text(r, feature) for r in results]
     embeddings = embed_texts(texts)
 
     clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, metric="euclidean")
@@ -116,7 +155,7 @@ def _keyword_label(case_texts: list[str]) -> str:
     return ", ".join(top) if top else "(no distinguishing keywords)"
 
 
-def label_cluster(case_texts: list[str]) -> str:
+def label_cluster(case_texts: list[str], feature: str = "text") -> str:
     """Natural-language cluster label (FR-21). Tries the LLM judge harness
     when `GROQ_API_KEY` is configured; falls back to keyword extraction
     otherwise or on any LLM failure — never raises, since a failed label
@@ -133,8 +172,11 @@ def label_cluster(case_texts: list[str]) -> str:
         # routes independently of the judge (see groq_llm_call's docstring).
         llm_call = groq_llm_call(os.environ.get("SAGWA_CLUSTER_MODEL"))
         sample = "\n---\n".join(case_texts[:5])  # cap prompt size
+        what = ("agent trajectories (steps in order, repeats collapsed, errors in brackets, "
+                "then the success conditions missed)" if feature == "trajectory"
+                else "inputs/outputs")
         prompt = (
-            "The following are inputs/outputs from failing test cases in an LLM "
+            f"The following are {what} from failing test cases in an LLM "
             "evaluation run. In one short phrase (under 10 words), summarize the "
             f"common failure pattern:\n\n{sample}"
         )
@@ -149,28 +191,32 @@ def cluster_run(
     gates_config: dict,
     min_cluster_size: int = 3,
     label_top_n: int = 10,
+    feature: str | None = None,
 ) -> list[FailureCluster]:
     """Entry point (FR-20..22): failing_results -> embed -> cluster ->
     label, sorted by size descending (serves FR-22's dashboard sort
     requirement for both the CLI and the dashboard). Only the top
     `label_top_n` clusters by size get an LLM-generated label — the rest
     get the cheap keyword fallback, to bound cost on a run with many small
-    clusters."""
+    clusters.
+
+    `feature=None` picks `"trajectory"` when the failing cases recorded
+    trajectories (an agentic run) and `"text"` otherwise."""
     results = failing_results(session, run_id, gates_config)
     results_by_case_id = {r.case_id: r for r in results}
+    if feature is None:
+        feature = "trajectory" if any(r.trace_steps for r in results) else "text"
 
-    clusters = cluster_failures(results, min_cluster_size=min_cluster_size)
+    clusters = cluster_failures(results, min_cluster_size=min_cluster_size, feature=feature)
     clusters.sort(key=lambda c: c.size, reverse=True)
 
     labeled = []
     for i, cluster in enumerate(clusters):
-        case_texts = [
-            f"{results_by_case_id[cid].input}\n{results_by_case_id[cid].output}" for cid in cluster.case_ids
-        ]
+        case_texts = [_feature_text(results_by_case_id[cid], feature) for cid in cluster.case_ids]
         if cluster.cluster_id == -1:
             label = "(unclustered outliers)"
         elif i < label_top_n:
-            label = label_cluster(case_texts)
+            label = label_cluster(case_texts, feature)
         else:
             label = _keyword_label(case_texts)
         labeled.append(
