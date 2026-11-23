@@ -83,7 +83,7 @@ sagwa run --target my_adapters.support_triage:SupportTriageAdapter --dataset gol
 | Command | Purpose |
 |---|---|
 | `sagwa run --target T --dataset D` | Run a golden set. `--concurrency N`, `--json out.json`, and `--resume <run_id>` to continue an interrupted run, re-running only missing cases |
-| `sagwa diff --baseline A --candidate B` | Per-metric and per-tag comparison: paired bootstrap CI for continuous metrics, exact McNemar's for binary ones, plus the list of cases that flipped |
+| `sagwa diff --baseline A --candidate B` | Per-metric and per-tag comparison: paired bootstrap CI for continuous metrics, exact McNemar's for binary ones, whether each change is better or worse, the cases that flipped, and the tag most affected |
 | `sagwa gate --run-id R` | Exit non-zero if a metric misses its threshold. `--baseline A` also fails on a significant regression against run A |
 | `sagwa cluster --run-id R` | Group failing cases with HDBSCAN and label each cluster |
 | `sagwa dashboard` | Streamlit trends for metrics, cost and latency, with per-case drill-down |
