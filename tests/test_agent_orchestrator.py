@@ -6,7 +6,7 @@ from types import SimpleNamespace as NS
 
 from examples.agent import agents
 from examples.agent.orchestrator import AgentConfig, Orchestrator
-from examples.agent.tools import AMBIGUOUS_DESCRIPTIONS
+from examples.agent.tools import AMBIGUOUS_DESCRIPTIONS, GENERIC_NAMES, shipment_tracker
 
 
 def _msg(content="", tool_calls=()):
@@ -127,3 +127,39 @@ def test_v2_gives_both_lookup_tools_the_same_description():
     tools = next(t for m, t in client.calls if t)
     descriptions = {t["function"]["name"]: t["function"]["description"] for t in tools}
     assert descriptions["corpus_search"].split(".")[0] == descriptions["order_db"].split(".")[0]
+
+
+def test_shipment_tracker_is_always_down():
+    import pytest
+
+    with pytest.raises(ConnectionError):
+        shipment_tracker("1050")
+
+
+def _tracker_research(messages):
+    last = messages[-1]
+    if last["role"] == "user" and "Stop calling it" in last["content"]:
+        return _msg("Findings: the tracking service is unavailable.")
+    return _msg(tool_calls=[("shipment_tracker", '{"order_id": "1050"}')])
+
+
+def test_baseline_gives_up_on_the_outage_and_v3_retries_until_the_step_limit():
+    baseline, _ = _run(research=_tracker_research)
+    v3, _ = _run(config=replace(AgentConfig(), retry_cap=None), research=_tracker_research)
+    calls = lambda run: [s for s in run.trajectory if s.step_type == "tool"]
+    assert len(calls(baseline)) == 2 and all("503" in s.error for s in calls(baseline))
+    assert v3.step_count >= AgentConfig().max_steps > 20  # golden cases allow at most 20
+
+
+def test_v2_model_sees_generic_names_but_the_trajectory_records_real_ones():
+    def research(messages):
+        if messages[-1]["role"] == "tool":
+            return _msg("Findings: 13.")
+        return _msg(tool_calls=[("lookup", '{"sql": "SELECT count(*) FROM orders"}')])
+
+    config = replace(AgentConfig(), tool_descriptions=dict(AMBIGUOUS_DESCRIPTIONS), tool_names=dict(GENERIC_NAMES))
+    run, client = _run(config=config, research=research)
+    seen = {t["function"]["name"] for t in next(t for m, t in client.calls if t)}
+    assert {"search", "lookup"} <= seen and "order_db" not in seen
+    tool = next(s for s in run.trajectory if s.step_type == "tool")
+    assert tool.name == "order_db" and tool.error is None

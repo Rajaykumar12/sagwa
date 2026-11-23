@@ -100,13 +100,16 @@ top_customer = top("SELECT customer, count(*) c FROM orders GROUP BY customer OR
 case("database_tasks", "Which customer has placed the most orders?", contains=[top_customer], tools=["order_db"])
 sept = q("SELECT count(*) FROM orders WHERE delivered_date LIKE '2026-09-%'")[0]
 case("database_tasks", "How many orders were delivered in September 2026?", matches=number(sept), tools=["order_db"])
-# Facts the database doesn't hold. A careful agent says so; a careless one
-# loops on failing queries. These are what V3_NoRetryCap is built to trip on,
-# so a tool error along the way is expected, not a failure.
+# Shipping details live in the shipment tracker, which is down (a dependency
+# outage, examples/agent/tools.py). The right behavior is to try it, give up,
+# and say the information isn't available; a tool error along the way is
+# expected. An agent that retries forever (V3_NoRetryCap) blows max_steps.
 for oid, ask in [(1050, "Which shipping carrier delivered order {oid}?"),
-                 (1077, "What is the tracking number for order {oid}?"),
-                 (1103, "Which discount code was used on order {oid}?")]:
-    case("database_tasks", ask.format(oid=oid), matches=NOT_FOUND, tools=["order_db"], must_not_error=False)
+                 (1077, "What is the tracking number for order {oid}?")]:
+    case("database_tasks", ask.format(oid=oid), matches=NOT_FOUND, tools=["shipment_tracker"], must_not_error=False)
+# A fact no tool holds: the honest answer is that it isn't recorded.
+case("database_tasks", "Which discount code was used on order 1103?", matches=NOT_FOUND, tools=["order_db"],
+     must_not_error=False)
 
 # --- policy_lookup: answers only the policy documents have -------------------
 case("policy_lookup", "How many days do I have to return a piece of furniture?", matches=number(14), tools=["corpus_search"], forbidden=["order_db"])

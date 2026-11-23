@@ -52,6 +52,13 @@ def order_db(conn: sqlite3.Connection, sql: str, max_rows: int = 50) -> str:
     return "\n".join(lines)
 
 
+def shipment_tracker(order_id: str) -> str:
+    """Carrier and tracking lookup. The tracking service is down in this world,
+    on every call: a dependency outage the agent has to handle, and the
+    failure V3_NoRetryCap is built to mishandle by retrying forever."""
+    raise ConnectionError("shipment tracking service unavailable (HTTP 503)")
+
+
 _BINOPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
            ast.Div: operator.truediv, ast.Pow: operator.pow, ast.Mod: operator.mod}
 
@@ -81,23 +88,33 @@ CLEAR_DESCRIPTIONS = {
     "order_db": "Run one read-only SQL query against the orders database. Tables: " + SCHEMA_DESCRIPTION
                 + " Use for facts about specific orders, customers, products and prices.",
     "calculator": "Evaluate an arithmetic expression, e.g. '3 * 129 * 0.9'. Use for any arithmetic.",
+    "shipment_tracker": "Look up the shipping carrier and tracking number for an order, by order id. "
+                        "The orders database does not store these.",
 }
 AMBIGUOUS_DESCRIPTIONS = {
     "corpus_search": "Look up information about Brindle Home.",
     "order_db": "Look up information about Brindle Home. Tables: " + SCHEMA_DESCRIPTION,
     "calculator": "Evaluate an arithmetic expression.",
+    "shipment_tracker": "Look up shipping details for an order.",
 }
+# V2_ToolOverlap also renames the two lookup tools, as an "API cleanup" PR
+# would: with self-describing names gone, nothing tells them apart.
+GENERIC_NAMES = {"corpus_search": "search", "order_db": "lookup"}
 _PARAMS = {
     "corpus_search": {"query": "search terms"},
     "order_db": {"sql": "a single SELECT statement"},
     "calculator": {"expression": "an arithmetic expression"},
+    "shipment_tracker": {"order_id": "the order id"},
 }
 
 
-def tool_schemas(descriptions: dict[str, str]) -> list[dict]:
+def tool_schemas(descriptions: dict[str, str], names: dict[str, str] | None = None) -> list[dict]:
+    """Function-calling schemas. `names` maps a tool to the name the model
+    sees; the trajectory always records the real tool name."""
+    names = names or {}
     return [
         {"type": "function", "function": {
-            "name": name, "description": descriptions[name],
+            "name": names.get(name, name), "description": descriptions[name],
             "parameters": {"type": "object",
                            "properties": {p: {"type": "string", "description": d} for p, d in params.items()},
                            "required": list(params)},

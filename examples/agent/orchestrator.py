@@ -13,7 +13,8 @@ import time
 from dataclasses import dataclass, field
 
 from examples.agent import agents
-from examples.agent.tools import CLEAR_DESCRIPTIONS, calculator, corpus_search, order_db, tool_schemas
+from examples.agent.tools import (CLEAR_DESCRIPTIONS, calculator, corpus_search, order_db, shipment_tracker,
+                                  tool_schemas)
 from examples.agent.world import build_database
 from sagwa.adapters.base import AgentRun, AgentStep
 
@@ -23,6 +24,8 @@ class AgentConfig:
     """Every knob a regression variant turns. The baseline is the default."""
 
     tool_descriptions: dict[str, str] = field(default_factory=lambda: dict(CLEAR_DESCRIPTIONS))
+    # Name the model sees for a tool, when different from its real name.
+    tool_names: dict[str, str] = field(default_factory=dict)
     # Consecutive failures of one tool before the researcher is told to stop
     # calling it. None = never (V3_NoRetryCap).
     retry_cap: int | None = 2
@@ -30,8 +33,9 @@ class AgentConfig:
     # Characters of the researcher's findings passed to the writer. None = all.
     handoff_chars: int | None = None
     # Hard stop on trajectory length, in every variant, so even a runaway agent
-    # ends. It's a safety net, not the retry cap.
-    max_steps: int = 30
+    # ends. It's a safety net, not the retry cap; golden cases allow at most 20
+    # steps, so an agent that only stops here has already failed.
+    max_steps: int = 24
 
 
 def _groq():
@@ -45,7 +49,8 @@ class Orchestrator:
         self.config = config or AgentConfig()
         self.client = client or _groq()
         self.conn = build_database()
-        self.tools = tool_schemas(self.config.tool_descriptions)
+        self.tools = tool_schemas(self.config.tool_descriptions, self.config.tool_names)
+        self.real_name = {alias: name for name, alias in self.config.tool_names.items()}
 
     def _call_tool(self, name: str, args: dict) -> str:
         if name == "corpus_search":
@@ -54,6 +59,8 @@ class Orchestrator:
             return order_db(self.conn, args["sql"])
         if name == "calculator":
             return calculator(args["expression"])
+        if name == "shipment_tracker":
+            return shipment_tracker(args["order_id"])
         raise ValueError(f"unknown tool: {name}")
 
     def _agent_step(self, steps, name, prompt, max_tokens=700) -> str:
@@ -80,7 +87,7 @@ class Orchestrator:
                                              "function": {"name": c.function.name, "arguments": c.function.arguments}}
                                             for c in calls]})
             for call in calls:
-                name = call.function.name
+                name = self.real_name.get(call.function.name, call.function.name)
                 start = time.perf_counter()
                 try:
                     args = json.loads(call.function.arguments or "{}")

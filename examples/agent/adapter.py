@@ -9,7 +9,7 @@ from dataclasses import replace
 
 from examples.agent import agents
 from examples.agent.orchestrator import AgentConfig, Orchestrator
-from examples.agent.tools import AMBIGUOUS_DESCRIPTIONS
+from examples.agent.tools import AMBIGUOUS_DESCRIPTIONS, GENERIC_NAMES
 from sagwa.adapters.base import AgentRun
 
 
@@ -26,17 +26,22 @@ class BrindleAgentV1:
 
 
 class V2_ToolOverlap(BrindleAgentV1):
-    """Tool descriptions trimmed until corpus_search and order_db read the same
-    ("Look up information about Brindle Home"): the agent can't tell which
-    tool holds policies and which holds orders."""
+    """An "API cleanup" PR: corpus_search and order_db renamed to `search` and
+    `lookup` and given the same description ("Look up information about
+    Brindle Home"), so nothing tells the policy source from the order source.
+
+    Vague descriptions alone did not regress anything (2026-11-23: gpt-oss-20b
+    still picked the right tool every time, from the self-describing names),
+    which is why the names change too."""
 
     name = "brindle-agent-v2-tool-overlap"
-    config = replace(AgentConfig(), tool_descriptions=dict(AMBIGUOUS_DESCRIPTIONS))
+    config = replace(AgentConfig(), tool_descriptions=dict(AMBIGUOUS_DESCRIPTIONS), tool_names=dict(GENERIC_NAMES))
 
 
 class V3_NoRetryCap(BrindleAgentV1):
-    """The consecutive-failure cap removed: a tool that keeps failing is
-    retried until the hard step limit ends the case."""
+    """The consecutive-failure cap removed: a tool that keeps failing (the
+    shipment tracker is down) is retried until the hard step limit ends the
+    case."""
 
     name = "brindle-agent-v3-no-retry-cap"
     config = replace(AgentConfig(), retry_cap=None)
