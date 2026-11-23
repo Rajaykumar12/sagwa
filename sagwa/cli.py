@@ -16,7 +16,7 @@ from sagwa.datasets import DatasetError, load_golden_set
 from sagwa.clustering import cluster_run
 from sagwa.diff import diff_runs, format_table
 from sagwa.gate import GateConfigError, evaluate_gate, load_gate_config, load_regression_config
-from sagwa.metrics import compute_metrics
+from sagwa.metrics import compute_agent_metrics, compute_metrics
 from sagwa.runner import run_cases
 from sagwa.storage import Result, Run, TraceStep, get_session
 
@@ -161,7 +161,8 @@ def run(
                 latency_ms=result.latency_ms,
                 tokens=result.tokens,
                 cost_usd=result.cost_usd,
-                metrics_json=compute_metrics(outcome.case, result.answer, result.context),
+                metrics_json={**compute_metrics(outcome.case, result.answer, result.context),
+                              **compute_agent_metrics(outcome.case, result)},
                 trace_steps=[
                     TraceStep(
                         seq=seq, step_type=step.step_type, name=step.name, input=step.input,

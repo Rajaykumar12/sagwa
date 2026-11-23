@@ -10,6 +10,7 @@ type's metrics later doesn't require storage/CLI changes (NFR
 """
 from __future__ import annotations
 
+from sagwa.adapters.base import AgentRun
 from sagwa.datasets.schema import GoldenCase
 from sagwa.metrics.classification import compute_classification_metrics
 from sagwa.metrics.reference import compute_reference_metrics
@@ -38,4 +39,21 @@ def compute_metrics(case: GoldenCase, answer: str, context: str | None) -> dict:
     if judge is not None:
         metrics["judge"] = judge
 
+    return metrics
+
+
+def compute_agent_metrics(case: GoldenCase, run: AgentRun) -> dict:
+    """Metrics only an agentic case has (docs/AGENTIC_PRD.md Phase 2):
+    `task.success` when the case defines success criteria, and `agent.*` when
+    the run recorded a trajectory. Kept apart from `compute_metrics`, whose
+    callers pass only an answer and context. Pure functions, no model call,
+    so a stored run can be rescored from its trajectory at any time."""
+    from sagwa.metrics.agent_success import compute_success
+    from sagwa.metrics.agent_trajectory import compute_trajectory_metrics
+
+    metrics: dict = {}
+    if case.success_criteria is not None:
+        metrics["task"] = compute_success(case.success_criteria, run)
+    if run.trajectory:
+        metrics["agent"] = compute_trajectory_metrics(run, case.expected_tools)
     return metrics

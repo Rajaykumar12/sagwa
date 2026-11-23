@@ -51,7 +51,38 @@ METRICS: dict[str, MetricSpec] = {
     "classification.exact_set_match": MetricSpec("binary", higher_is_better=True),
     "safety.pii.flagged": MetricSpec("binary", higher_is_better=False),
     "safety.toxicity.flagged": MetricSpec("binary", higher_is_better=False),
+    # Agentic cases (docs/AGENTIC_PRD.md Phase 2). `task.success` is the
+    # headline; the rest describe the trajectory that produced the answer.
+    "task.success": MetricSpec("binary", higher_is_better=True),
+    "agent.tool_call_accuracy": MetricSpec("continuous", higher_is_better=True),
+    "agent.tool_error_rate": MetricSpec("continuous", higher_is_better=False),
+    "agent.tool_retry_rate": MetricSpec("continuous", higher_is_better=False),
+    "agent.loop_rate": MetricSpec("continuous", higher_is_better=False),
+    "agent.recovery_rate": MetricSpec("continuous", higher_is_better=True),
+    "agent.handoff_loss_rate": MetricSpec("continuous", higher_is_better=False),
+    # Volume metrics: "lower is better" means cheaper, which matters only
+    # once a gate is put on them.
+    "agent.steps": MetricSpec("continuous", higher_is_better=False),
+    "agent.tool_calls": MetricSpec("continuous", higher_is_better=False),
+    "agent.handoff_count": MetricSpec("continuous", higher_is_better=False),
+    "agent.tokens": MetricSpec("continuous", higher_is_better=False),
+    "agent.latency_ms": MetricSpec("continuous", higher_is_better=False),
+    "agent.cost_usd": MetricSpec("continuous", higher_is_better=False),
+    "agent.step_error": MetricSpec("binary", higher_is_better=False),
+    # Run-level: a ratio of run totals, not a mean of per-case values.
+    "cost.per_success": MetricSpec("continuous", higher_is_better=False, aggregation="run_level",
+                                   aggregator=lambda results: _agent().cost_per_success(results)),
+    "tokens.per_success": MetricSpec("continuous", higher_is_better=False, aggregation="run_level",
+                                     aggregator=lambda results: _agent().tokens_per_success(results)),
 }
+
+
+def _agent():
+    # Imported lazily: the registry is imported by diff and gate, which
+    # shouldn't pull in metric modules they never call.
+    from sagwa.metrics import agent_trajectory
+
+    return agent_trajectory
 
 
 def metric_paths(kind: Literal["continuous", "binary"]) -> tuple[str, ...]:

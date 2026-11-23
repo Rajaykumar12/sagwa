@@ -1,61 +1,69 @@
-"""Manual check of one agent run: reads its stored results and trace_steps
-and evaluates each case's success_criteria, plus step, tool and handoff counts.
+"""Scores stored agent runs with Sagwa's trajectory metrics, rebuilding each
+case's `AgentRun` from its `results` row and `trace_steps`. No model call, so
+a run can be (re)scored at any time for free.
 
-Phase 1 requires each regression variant to be shown exhibiting its failure
-by hand before any metric claims to detect it; this is that check. It is not
-a Sagwa metric: Phase 2's `sagwa/metrics/agent_success.py` replaces it.
+Phase 1 needs each regression variant shown exhibiting its failure, and
+Phase 2 needs the metrics shown separating the variants. Both read from here:
 
-    python -m examples.agent.inspect_run <run_id> [-v]
+    python -m examples.agent.inspect_run <run_id> [<run_id> ...] [-v]
 """
-import re
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
+from statistics import mean
 
+from sagwa.adapters.base import AgentRun, AgentStep
 from sagwa.datasets import load_golden_set
-from sagwa.storage import Result, get_session
+from sagwa.metrics.agent_success import check_success
+from sagwa.metrics.agent_trajectory import compute_trajectory_metrics
+from sagwa.storage import Result, Run, get_session
 
-run_id = sys.argv[1]
-cases = {c.id: c for c in load_golden_set("golden_sets/agentic_sandbox.jsonl")}
-
-
-def success(case, result, steps):
-    sc, ans = case.success_criteria, result.output or ""
-    tools = [s.name for s in steps if s.step_type == "tool"]
-    why = []
-    if result.error: why.append("case error")
-    if any(x.lower() not in ans.lower() for x in sc.answer_contains): why.append("contains")
-    if sc.answer_matches and not re.search(sc.answer_matches, ans, re.I): why.append("matches")
-    if any(t not in tools for t in sc.required_tools): why.append("required_tools")
-    if any(t in tools for t in sc.forbidden_tools): why.append("forbidden_tool")
-    if sc.max_steps and len(steps) > sc.max_steps: why.append(f"steps>{sc.max_steps}")
-    if sc.must_not_error and any(s.error for s in steps): why.append("step_error")
-    return not why, why
+CASES = {c.id: c for c in load_golden_set("golden_sets/agentic_sandbox.jsonl")}
+SHOWN = ["tool_call_accuracy", "tool_error_rate", "tool_retry_rate", "loop_rate",
+         "recovery_rate", "handoff_loss_rate", "steps", "tokens"]
 
 
-by_tag = defaultdict(lambda: [0, 0])
-stats = Counter()
-rows = []
-with get_session() as s:
-    results = s.query(Result).filter(Result.run_id == run_id).all()
-    for r in sorted(results, key=lambda r: r.case_id):
-        case, steps = cases[r.case_id], list(r.trace_steps)
-        ok, why = success(case, r, steps)
-        tag = case.tags[0]
-        by_tag[tag][0] += ok; by_tag[tag][1] += 1
-        tools = [x.name for x in steps if x.step_type == "tool"]
-        stats["steps"] += len(steps); stats["tool_calls"] += len(tools)
-        stats["tool_errors"] += sum(1 for x in steps if x.step_type == "tool" and x.error)
-        stats["reviewer"] += any(x.name == "reviewer" for x in steps)
-        stats["truncated"] += any(x.step_type == "handoff" and x.metadata_json.get("truncated") for x in steps)
-        stats["tokens"] += r.tokens or 0
-        stats["wrong_tool_first"] += bool(tools) and bool(case.expected_tools) and tools[0] not in case.expected_tools
-        rows.append((r.case_id, tag, ok, ",".join(why), len(steps), "+".join(tools)[:60], (r.output or r.error or "")[:90]))
-n = len(results)
-print(f"run {run_id}: {n} cases, success {sum(v[0] for v in by_tag.values())}/{n}")
-print("by tag:", {t: f"{a}/{b}" for t, (a, b) in sorted(by_tag.items())})
-print(f"mean steps {stats['steps']/n:.1f} | tool calls {stats['tool_calls']} | tool errors {stats['tool_errors']} | "
-      f"reviewer ran {stats['reviewer']}/{n} | truncated handoffs {stats['truncated']}/{n} | "
-      f"first tool not expected {stats['wrong_tool_first']} | tokens {stats['tokens']} ({stats['tokens']/n:.0f}/case)")
-if "-v" in sys.argv:
-    for row in rows:
-        print(" ", row[0], row[1][:8], "OK " if row[2] else "BAD", f"{row[3]:24s}", row[4], row[5], "|", repr(row[6]))
+def agent_run(result: Result) -> AgentRun:
+    return AgentRun(
+        answer=result.output, context=result.context, latency_ms=result.latency_ms,
+        tokens=result.tokens, cost_usd=result.cost_usd,
+        trajectory=[AgentStep(s.step_type, s.name, input=s.input, output=s.output, latency_ms=s.latency_ms,
+                              tokens=s.tokens, cost_usd=s.cost_usd, error=s.error, metadata=s.metadata_json or {})
+                    for s in result.trace_steps],
+    )
+
+
+def score(run_id: str, verbose: bool) -> None:
+    with get_session() as session:
+        target = session.get(Run, run_id).target_name.split(":")[-1]
+        results = sorted(session.query(Result).filter(Result.run_id == run_id).all(), key=lambda r: r.case_id)
+        errored = [r for r in results if r.error]
+        by_tag, values, rows = defaultdict(list), defaultdict(list), []
+        for r in results:
+            if r.error:
+                continue
+            case, run = CASES[r.case_id], agent_run(r)
+            failed = check_success(case.success_criteria, run)
+            m = compute_trajectory_metrics(run, case.expected_tools)
+            by_tag[case.tags[0]].append(not failed)
+            reviewer = any(s.name == "reviewer" for s in run.trajectory)
+            for k in SHOWN:
+                if m[k] is not None:
+                    values[k].append(m[k])
+            values["reviewer_ran"].append(reviewer)
+            rows.append((r.case_id, case.tags[0], not failed, ",".join(failed), m["steps"],
+                         "+".join(s.name for s in run.trajectory if s.step_type == "tool")[:50], (r.output or "")[:80]))
+
+    done = sum(len(v) for v in by_tag.values())
+    print(f"\n{target} ({run_id[:8]}): {len(results)} cases, {len(errored)} errored, "
+          f"task.success {sum(sum(v) for v in by_tag.values())}/{done}")
+    print("  by tag: " + ", ".join(f"{t} {sum(v)}/{len(v)}" for t, v in sorted(by_tag.items())))
+    print("  " + " | ".join(f"{k} {mean(values[k]):.2f}" if values[k] else f"{k} n/a"
+                            for k in SHOWN + ["reviewer_ran"]))
+    if verbose:
+        for row in rows:
+            print(f"    {row[0]} {row[1][:9]:9s} {'OK ' if row[2] else 'BAD'} {row[3]:28s} {row[4]:2d} {row[5]:50s} {row[6]!r}")
+
+
+if __name__ == "__main__":
+    for run_id in [a for a in sys.argv[1:] if not a.startswith("-")]:
+        score(run_id, "-v" in sys.argv)

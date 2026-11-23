@@ -31,9 +31,35 @@ _OLD_BINARY = (
 )
 
 
-def test_registry_split_is_exactly_the_old_tuples_in_the_same_order():
-    assert metric_paths("continuous") == _OLD_CONTINUOUS
-    assert metric_paths("binary") == _OLD_BINARY
+def test_pre_agentic_metrics_keep_their_kind_and_lead_in_the_same_order():
+    """The registry replaced the old tuples without changing them; agentic
+    metrics were appended after, so existing diff output keeps its order."""
+    assert metric_paths("continuous")[: len(_OLD_CONTINUOUS)] == _OLD_CONTINUOUS
+    assert metric_paths("binary")[: len(_OLD_BINARY)] == _OLD_BINARY
+
+
+def test_every_numeric_agent_metric_is_registered():
+    from sagwa.adapters.base import AgentRun, AgentStep
+    from sagwa.datasets.schema import SuccessCriteria
+    from sagwa.metrics import compute_agent_metrics
+
+    case = GoldenCase(id="a", input="q", task_type="agentic", expected_tools=["order_db"],
+                      success_criteria=SuccessCriteria(answer_contains=["x"]))
+    run = AgentRun(answer="x", context=None, latency_ms=1, tokens=1, cost_usd=0.1, trajectory=[
+        AgentStep("tool", "order_db", input="q", error="E"), AgentStep("tool", "order_db", input="q"),
+        AgentStep("handoff", "a->b", input="long", output="lo")])
+    emitted = _numeric_leaves(compute_agent_metrics(case, run))
+    assert "task.success" in emitted and "agent.loop_rate" in emitted
+    unregistered = [path for path in emitted if path not in METRICS]
+    assert not unregistered, f"computed but not in sagwa/metrics/registry.py: {unregistered}"
+
+
+def test_registered_run_level_metrics_aggregate_through_the_gate():
+    results = [_result({"task": {"success": True}}, cost=0.2), _result({"task": {"success": False}}, cost=0.2)]
+    for r in results:
+        r.tokens = 50
+    assert aggregate_metric(results, "tokens.per_success") == 100
+    assert aggregate_metric(results, "cost.per_success") == pytest.approx(0.4)
 
 
 def test_diff_reads_its_paths_from_the_registry():
