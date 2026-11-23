@@ -53,9 +53,20 @@ def test_recovery_after_a_failed_call():
     assert m["recovery_rate"] == 1.0 and m["tool_retry_rate"] == 0.5
 
 
-def test_loop_rate_counts_identical_repeated_calls_only():
+def test_loop_rate_counts_third_and_later_identical_calls():
     m = _metrics([_tool("order_db", "q"), _tool("order_db", "q"), _tool("order_db", "q"), _tool("order_db", "other")])
-    assert m["loop_rate"] == pytest.approx(2 / 4)
+    assert m["loop_rate"] == pytest.approx(1 / 4)
+
+
+def test_one_retry_of_the_same_call_is_not_a_loop():
+    """Retrying a failed call once is what the baseline agent is meant to do."""
+    m = _metrics([_tool("shipment_tracker", "1050", "503"), _tool("shipment_tracker", "1050", "503")])
+    assert m["loop_rate"] == 0.0 and m["tool_retry_rate"] == 0.5
+
+
+def test_a_retry_loop_is_mostly_loop():
+    m = _metrics([_tool("shipment_tracker", "1050", "503") for _ in range(10)])
+    assert m["loop_rate"] == pytest.approx(8 / 10)
 
 
 def test_handoff_loss_rate():

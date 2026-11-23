@@ -1,0 +1,40 @@
+# Gate profile for agentic targets (docs/AGENTIC_PRD.md Phase 3), first used
+# on the Brindle Home reference agent (examples/agent/).
+#
+# Thresholds come from the measured baseline (run 09908d78, 2026-11-23), not
+# from the PRD's first draft, which would have failed the baseline itself:
+#   task.success 0.76 | judge.score 0.81 | tool_error_rate 0.00 | loop_rate 0.00
+#   steps 8.05 per case | tokens.per_success ~3,860
+# Absolute floors sit a little below those values; `regression:` is what
+# compares a PR against main.
+#
+# Left out on purpose:
+# - agent.recovery_rate: undefined (None) for a run where no tool call failed,
+#   and a configured metric that wasn't computed fails the gate. That would
+#   fail every clean run.
+# - cost.per_success: the reference agent runs on a free tier and records no
+#   cost. tokens.per_success is the same ratio in tokens.
+metrics:
+  task.success:
+    op: gte
+    value: 0.70
+  judge.score:
+    op: gte
+    value: 0.70
+  agent.tool_error_rate:
+    op: lte
+    value: 0.10
+  # Third-or-later identical calls. A per-case mean, so a few looping cases in
+  # a large run move it only a little; the threshold is set to catch that.
+  agent.loop_rate:
+    op: lte
+    value: 0.01
+  agent.steps:
+    op: lte
+    value: 12
+  tokens.per_success:
+    op: lte
+    value: 6000
+
+regression:
+  tolerance: 0.02

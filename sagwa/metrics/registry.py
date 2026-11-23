@@ -85,6 +85,11 @@ def _agent():
     return agent_trajectory
 
 
+def run_level_paths() -> tuple[str, ...]:
+    """Metrics computed from a whole run's results, in registry order."""
+    return tuple(path for path, spec in METRICS.items() if spec.aggregation == "run_level")
+
+
 def metric_paths(kind: Literal["continuous", "binary"]) -> tuple[str, ...]:
     """Per-case (mean-aggregated) metric paths of one kind, in registry order."""
     return tuple(

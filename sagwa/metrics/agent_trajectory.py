@@ -28,12 +28,15 @@ def compute_trajectory_metrics(run: AgentRun, expected_tools: list[str] | None) 
     )
     # A retry is a call straight after a failed call to the same tool.
     retries = sum(1 for i in range(1, len(tools)) if tools[i - 1].error and tools[i].name == tools[i - 1].name)
-    # A loop is a call identical (same tool, same input) to an earlier one.
-    seen, repeats = set(), 0
+    # A loop is the third or later identical call (same tool, same input): one
+    # retry after a failure is reasonable policy, a third attempt at the same
+    # call is the agent going round in circles.
+    seen: dict[tuple, int] = {}
+    repeats = 0
     for s in tools:
         key = (s.name, s.input)
-        repeats += key in seen
-        seen.add(key)
+        seen[key] = seen.get(key, 0) + 1
+        repeats += seen[key] >= 3
     # Recovery: a failed call later followed by a successful call to the same tool.
     recovered = sum(1 for i in failed if any(t.name == tools[i].name and not t.error for t in tools[i + 1:]))
     # A lossy handoff passes on less than the sender produced.

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sagwa.gate._predicate import _get_metric, case_passes  # re-exported: sagwa.diff.case_passes
-from sagwa.metrics.registry import metric_paths
+from sagwa.metrics.registry import METRICS, metric_paths, run_level_paths
 from sagwa.storage import Result
 
 __all__ = [
@@ -51,7 +51,7 @@ class MetricDelta:
     baseline_mean: float | None
     candidate_mean: float | None
     delta: float | None
-    test: str  # "bootstrap_ci" | "mcnemar" | "insufficient_data"
+    test: str  # "bootstrap_ci" | "mcnemar" | "run_level" | "insufficient_data"
     p_value: float | None = None
     ci_low: float | None = None
     ci_high: float | None = None
@@ -92,6 +92,8 @@ class DiffResult:
     flips: list[CaseFlip]
     baseline_only_case_ids: list[str]
     candidate_only_case_ids: list[str]
+    # Tag(s) with the most pass->fail flips: where a regression concentrated.
+    most_affected_tags: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict:
@@ -103,6 +105,7 @@ class DiffResult:
             "flips": [f.to_dict() for f in self.flips],
             "baseline_only_case_ids": self.baseline_only_case_ids,
             "candidate_only_case_ids": self.candidate_only_case_ids,
+            "most_affected_tags": self.most_affected_tags,
             "created_at": self.created_at,
         }
 
@@ -231,6 +234,39 @@ def _metric_deltas(
     return deltas
 
 
+def _run_level_deltas(baseline_results: list[Result], candidate_results: list[Result]) -> list[MetricDelta]:
+    """Run-level metrics (e.g. tokens per successful task) are a ratio of run
+    totals: there are no paired per-case values, so no significance test.
+    They are reported as a plain delta marked `run_level`, never dropped and
+    never called significant."""
+    deltas = []
+    for metric_name in run_level_paths():
+        aggregator = METRICS[metric_name].aggregator
+        baseline_value, candidate_value = aggregator(baseline_results), aggregator(candidate_results)
+        if baseline_value is None and candidate_value is None:
+            continue
+        deltas.append(MetricDelta(
+            metric_name=metric_name, baseline_mean=baseline_value, candidate_mean=candidate_value,
+            delta=None if baseline_value is None or candidate_value is None else candidate_value - baseline_value,
+            test="run_level", n=len(baseline_results),
+        ))
+    return deltas
+
+
+def _most_affected(flips: list[CaseFlip], tag_sizes: dict[str, int]) -> list[str]:
+    """Tag(s) where the largest share of cases flipped pass->fail, needing at
+    least two flips. A share, not a count: a tag every case carries ("hard" on
+    HotpotQA) would otherwise always win and say nothing."""
+    counts: dict[str, int] = {}
+    for flip in flips:
+        if flip.direction == "pass_to_fail":
+            for tag in flip.tags:
+                counts[tag] = counts.get(tag, 0) + 1
+    shares = {tag: n / tag_sizes[tag] for tag, n in counts.items() if n >= 2 and tag_sizes.get(tag)}
+    top = max(shares.values(), default=0)
+    return sorted(tag for tag, share in shares.items() if share == top) if top else []
+
+
 def diff_runs(
     session,
     baseline_run_id: str,
@@ -256,6 +292,7 @@ def diff_runs(
     candidate_results = [candidate_by_case[cid] for cid in shared_ids]
 
     overall = _metric_deltas(_CONTINUOUS_METRIC_PATHS + _BINARY_METRIC_PATHS, baseline_results, candidate_results)
+    overall += _run_level_deltas(baseline_results, candidate_results)
 
     if golden_cases is None:
         golden_cases = {}
@@ -278,7 +315,7 @@ def diff_runs(
         tag_candidate = [candidate_by_case[cid] for cid in tag_case_ids]
         by_tag_deltas[tag] = _metric_deltas(
             _CONTINUOUS_METRIC_PATHS + _BINARY_METRIC_PATHS, tag_baseline, tag_candidate
-        )
+        ) + _run_level_deltas(tag_baseline, tag_candidate)
 
     gates_config = gates_config or {}
     flips = []
@@ -299,6 +336,7 @@ def diff_runs(
         flips=flips,
         baseline_only_case_ids=baseline_only,
         candidate_only_case_ids=candidate_only,
+        most_affected_tags=_most_affected(flips, {tag: len(ids) for tag, ids in by_tag.items()}),
     )
 
 
@@ -308,13 +346,21 @@ def format_table(result: DiffResult) -> str:
     lines = [
         f"Diff: baseline={result.baseline_run_id} candidate={result.candidate_run_id}",
         "",
-        f"{'metric':<28} {'baseline':>10} {'candidate':>10} {'delta':>10} {'test':>12} {'sig':>5} {'n':>5}",
+        f"{'metric':<30} {'baseline':>10} {'candidate':>10} {'delta':>10} {'effect':>9} {'test':>12} {'sig':>5} {'n':>5}",
     ]
     for m in result.overall:
+        sig = "n/a" if m.test == "run_level" else str(m.significant)
         lines.append(
-            f"{m.metric_name:<28} {_fmt(m.baseline_mean):>10} {_fmt(m.candidate_mean):>10} "
-            f"{_fmt(m.delta):>10} {m.test:>12} {str(m.significant):>5} {m.n:>5}"
+            f"{m.metric_name:<30} {_fmt(m.baseline_mean):>10} {_fmt(m.candidate_mean):>10} "
+            f"{_fmt(m.delta):>10} {_effect(m.metric_name, m.delta):>9} {m.test:>12} {sig:>5} {m.n:>5}"
         )
+
+    if result.most_affected_tags:
+        tag = result.most_affected_tags[0]
+        n = sum(1 for f in result.flips if f.direction == "pass_to_fail" and tag in f.tags)
+        lines.append("")
+        lines.append(f"Most affected: {', '.join(result.most_affected_tags)} "
+                     f"({n} of its cases flipped pass→fail)")
 
     if result.flips:
         lines.append("")
@@ -330,6 +376,19 @@ def format_table(result: DiffResult) -> str:
         lines.append(f"Candidate-only cases: {', '.join(result.candidate_only_case_ids)}")
 
     return "\n".join(lines)
+
+
+def _effect(metric_name: str, delta: float | None) -> str:
+    """`↑ better` / `↓ worse`: the arrow is the raw direction, the word comes
+    from the registry's `higher_is_better`, so a cost increase reads as worse
+    and a recovery-rate increase as better. Blank for an unregistered metric."""
+    spec = METRICS.get(metric_name)
+    if spec is None or delta is None:
+        return ""
+    if abs(delta) < 1e-12:
+        return "same"
+    better = (delta > 0) == spec.higher_is_better
+    return f"{'↑' if delta > 0 else '↓'} {'better' if better else 'worse'}"
 
 
 def _fmt(value: float | None) -> str:
