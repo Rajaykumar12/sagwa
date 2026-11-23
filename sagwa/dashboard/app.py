@@ -5,7 +5,9 @@ Launched via `sagwa dashboard` (see `sagwa/cli.py`), or directly with
 """
 import streamlit as st
 
-from sagwa.dashboard.queries import case_detail, cost_latency_trend, metric_trend, run_failure_clusters
+from sagwa.dashboard.queries import (agentic_runs, case_detail, cost_latency_trend, load_trace, metric_trend,
+                                     run_cases, run_failure_clusters, trace_summary)
+from sagwa.dashboard.trace_view import render_trace
 from sagwa.gate import load_gate_config
 from sagwa.storage import Run, get_session
 
@@ -19,53 +21,86 @@ if not target_names:
     st.info("No runs recorded yet. Run `sagwa run --target ... --dataset ...` first.")
     st.stop()
 
-target_name = st.selectbox("Target pipeline", target_names)
+overview_tab, traces_tab = st.tabs(["Overview", "Agent traces"])
 
-st.header("Metric trends")
-metric_path = st.text_input("Metric path (dotted, e.g. 'reference.fuzzy_match' or 'judge.score')", "reference.fuzzy_match")
-with get_session() as session:
-    points = metric_trend(session, target_name, metric_path)
-if points:
-    st.line_chart({"created_at": [p[0] for p in points], metric_path: [p[1] for p in points]}, x="created_at", y=metric_path)
-else:
-    st.write(f"No runs of '{target_name}' have any case reporting '{metric_path}'.")
+with overview_tab:
+    target_name = st.selectbox("Target pipeline", target_names)
 
-st.header("Cost & latency trends")
-with get_session() as session:
-    cl_points = cost_latency_trend(session, target_name)
-if cl_points:
-    st.line_chart(
-        {
-            "created_at": [p[0] for p in cl_points],
-            "mean_cost_usd": [p[1] for p in cl_points],
-            "mean_latency_ms": [p[2] for p in cl_points],
-        },
-        x="created_at",
-    )
-
-st.header("Failure clusters")
-with get_session() as session:
-    run_ids = [
-        r.id
-        for r in session.query(Run).filter(Run.target_name == target_name).order_by(Run.created_at.desc()).all()
-    ]
-if run_ids:
-    run_id = st.selectbox("Run", run_ids)
-    gates = load_gate_config() if st.checkbox("Use config/gates.yaml thresholds", value=True) else {}
+    st.header("Metric trends")
+    metric_path = st.text_input("Metric path (dotted, e.g. 'reference.fuzzy_match' or 'judge.score')", "reference.fuzzy_match")
     with get_session() as session:
-        clusters = run_failure_clusters(session, run_id, gates)
+        points = metric_trend(session, target_name, metric_path)
+    if points:
+        st.line_chart({"created_at": [p[0] for p in points], metric_path: [p[1] for p in points]}, x="created_at", y=metric_path)
+    else:
+        st.write(f"No runs of '{target_name}' have any case reporting '{metric_path}'.")
 
-    if not clusters:
-        st.write("No failing cases for this run (per the current pass/fail config).")
-    for c in sorted(clusters, key=lambda c: c.size, reverse=True):
-        with st.expander(f"[{c.cluster_id}] {c.label} — {c.size} case(s)"):
-            for case_id in c.case_ids:
-                with get_session() as session:
-                    detail = case_detail(session, run_id, case_id)
-                if detail is None:
-                    continue
-                st.markdown(f"**{case_id}**")
-                st.text(f"input: {detail['input']}")
-                st.text(f"output: {detail['output']}")
-                if detail["judge_rationale"]:
-                    st.text(f"judge score: {detail['judge_score']}  |  rationale: {detail['judge_rationale']}")
+    st.header("Cost & latency trends")
+    with get_session() as session:
+        cl_points = cost_latency_trend(session, target_name)
+    if cl_points:
+        st.line_chart(
+            {
+                "created_at": [p[0] for p in cl_points],
+                "mean_cost_usd": [p[1] for p in cl_points],
+                "mean_latency_ms": [p[2] for p in cl_points],
+            },
+            x="created_at",
+        )
+
+    st.header("Failure clusters")
+    with get_session() as session:
+        run_ids = [
+            r.id
+            for r in session.query(Run).filter(Run.target_name == target_name).order_by(Run.created_at.desc()).all()
+        ]
+    if run_ids:
+        run_id = st.selectbox("Run", run_ids)
+        gates = load_gate_config() if st.checkbox("Use config/gates.yaml thresholds", value=True) else {}
+        with get_session() as session:
+            clusters = run_failure_clusters(session, run_id, gates)
+
+        if not clusters:
+            st.write("No failing cases for this run (per the current pass/fail config).")
+        for c in sorted(clusters, key=lambda c: c.size, reverse=True):
+            with st.expander(f"[{c.cluster_id}] {c.label} — {c.size} case(s)"):
+                for case_id in c.case_ids:
+                    with get_session() as session:
+                        detail = case_detail(session, run_id, case_id)
+                    if detail is None:
+                        continue
+                    st.markdown(f"**{case_id}**")
+                    st.text(f"input: {detail['input']}")
+                    st.text(f"output: {detail['output']}")
+                    if detail["judge_rationale"]:
+                        st.text(f"judge score: {detail['judge_score']}  |  rationale: {detail['judge_rationale']}")
+
+with traces_tab:
+    # Runs -> Cases -> Trace (docs/AGENTIC_PRD.md Phase 4).
+    with get_session() as session:
+        runs = agentic_runs(session)
+    if not runs:
+        st.info("No agentic runs yet: no run has recorded trajectory steps.")
+    else:
+        run = st.selectbox("Agentic run", runs, key="trace_run",
+                           format_func=lambda r: f"{r['target_name'].split(':')[-1]} · {r['run_id'][:8]} · "
+                                                 f"{r['created_at']:%Y-%m-%d %H:%M}")
+        only_failed = st.checkbox("Only cases where task.success is false (or the case errored)", key="trace_failed")
+        with get_session() as session:
+            cases = run_cases(session, run["run_id"], only_failed=only_failed)
+        if not cases:
+            st.write("No cases match.")
+        else:
+            st.dataframe(
+                [{"case": c["case_id"], "success": c["success"], "failed": ", ".join(c["failed"]),
+                  "steps": c["steps"], "step errors": c["step_errors"], "tokens": c["tokens"],
+                  "latency_ms": c["latency_ms"], "case error": (c["error"] or "")[:60]} for c in cases],
+                hide_index=True, use_container_width=True)
+            picked = st.selectbox("Case", cases, key="trace_case",
+                                  format_func=lambda c: f"{c['case_id']}  {'✓' if c['success'] else '✗' if c['success'] is False else '·'}"
+                                                        f"  {c['steps']} steps")
+            with get_session() as session:
+                steps = load_trace(session, picked["result_id"])
+                detail = case_detail(session, run["run_id"], picked["case_id"])
+            st.markdown(f"**Question:** {detail['input']}")
+            render_trace(st, steps, trace_summary(steps), detail)

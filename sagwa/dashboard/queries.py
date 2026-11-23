@@ -5,7 +5,7 @@ testable without a Streamlit runtime.
 from __future__ import annotations
 
 from sagwa.clustering import cluster_run
-from sagwa.storage import Result, Run
+from sagwa.storage import Result, Run, TraceStep
 
 
 def _get_metric(result: Result, dotted_path: str):
@@ -84,3 +84,69 @@ def case_detail(session, run_id: str, case_id: str) -> dict | None:
         "judge_score": judge.get("score"),
         "judge_rationale": judge.get("rationale"),
     }
+
+
+# --- Agent traces (docs/AGENTIC_PRD.md Phase 4) ---------------------------
+# Everything below returns plain dicts, not ORM rows: sessions expire their
+# objects on commit, and the Streamlit layer reads them after it closes.
+
+
+def agentic_runs(session) -> list[dict]:
+    """Runs that recorded at least one trajectory step, newest first."""
+    rows = (
+        session.query(Run.id, Run.target_name, Run.created_at)
+        .join(Result, Result.run_id == Run.id)
+        .join(TraceStep, TraceStep.result_id == Result.id)
+        .distinct()
+        .order_by(Run.created_at.desc())
+        .all()
+    )
+    return [{"run_id": r.id, "target_name": r.target_name, "created_at": r.created_at} for r in rows]
+
+
+def run_cases(session, run_id: str, only_failed: bool = False) -> list[dict]:
+    """One row per case of a run, with the outcome needed to pick a trace.
+    `success` is `task.success` (None for a case without success criteria);
+    `only_failed` keeps cases where it is False or the case itself errored."""
+    results = session.query(Result).filter(Result.run_id == run_id).order_by(Result.case_id).all()
+    rows = []
+    for r in results:
+        task = _get_metric(r, "task") or {}
+        row = {
+            "result_id": r.id, "case_id": r.case_id, "success": task.get("success"),
+            "failed": task.get("failed", []), "steps": len(r.trace_steps),
+            "step_errors": sum(1 for s in r.trace_steps if s.error), "tokens": r.tokens,
+            "latency_ms": r.latency_ms, "error": r.error,
+        }
+        if only_failed and not (row["success"] is False or r.error):
+            continue
+        rows.append(row)
+    return rows
+
+
+def load_trace(session, result_id: str) -> list[dict]:
+    """A case's trajectory in step order (`seq`)."""
+    steps = session.query(TraceStep).filter(TraceStep.result_id == result_id).order_by(TraceStep.seq).all()
+    return [
+        {"seq": s.seq, "step_type": s.step_type, "name": s.name, "input": s.input, "output": s.output,
+         "latency_ms": s.latency_ms, "tokens": s.tokens, "cost_usd": s.cost_usd, "error": s.error,
+         "metadata": s.metadata_json or {}}
+        for s in steps
+    ]
+
+
+def trace_summary(steps: list[dict]) -> list[dict]:
+    """Per-agent and per-tool roll-up of a trajectory: how many steps each
+    took, and their latency, tokens, cost and errors. In order of first
+    appearance. A total of `None` means no step of that kind reported it."""
+    rollup: dict[tuple, dict] = {}
+    for s in steps:
+        key = (s["step_type"], s["name"])
+        row = rollup.setdefault(key, {"step_type": key[0], "name": key[1], "steps": 0, "errors": 0,
+                                      "latency_ms": None, "tokens": None, "cost_usd": None})
+        row["steps"] += 1
+        row["errors"] += bool(s["error"])
+        for field in ("latency_ms", "tokens", "cost_usd"):
+            if s[field] is not None:
+                row[field] = (row[field] or 0) + s[field]
+    return list(rollup.values())
