@@ -5,8 +5,8 @@
 | | |
 |---|---|
 | **Author** | Rajay Kumar |
-| **Status** | Draft — v1.0 |
-| **Last updated** | 2026-08-15 |
+| **Status** | v1.1 — adds §5.10, agent evaluation |
+| **Last updated** | 2026-11-25 |
 | **Related docs** | [ARCHITECTURE.md](./ARCHITECTURE.md) — how it works today & tech-stack rationale · [STATUS.md](./STATUS.md) — what's done, what's not |
 
 ---
@@ -125,6 +125,23 @@ Needs to walk a hiring manager through a coherent, defensible story about produc
 - FR-27: A dashboard displays cost and latency trends over time
 - FR-28: A dashboard allows browsing a single run's failure clusters and drilling into individual cases with judge rationale
 
+### 5.10 Agent evaluation
+
+An agent's final answer is a lossy summary of what it did: a planner change can leave the answer looking fine while doubling tool calls, looping on a failing tool, or dropping context between agents. These requirements evaluate the trajectory, not only the output. Numbering continues from §5.9 so modules can cite FR-NN.
+
+- FR-29: An agentic target returns its **trajectory** with its answer: an ordered list of agent turns, tool calls and handoffs, each with input, output, latency, tokens, cost and any error. Existing (non-agent) adapters work unchanged.
+- FR-30: Trajectories are stored **one row per step**, linked to the case's result, so metrics and the trace viewer query steps directly. A run with no trajectory stores none.
+- FR-31: A golden case can be **agentic**: it must declare **success criteria** (answer patterns, tools that must or must not be used, a step limit, whether step errors are allowed, whether the right answer is to decline) and may list the tools a good trajectory uses.
+- FR-32: **Task success** is decided deterministically from those criteria, never by the LLM judge and never from the gate config, and the conditions a case missed are recorded.
+- FR-33: Per-case **trajectory metrics**: tool-selection accuracy, tool error, retry and loop rates, recovery after a failed call, handoff context loss, steps, tokens, latency and cost. Run-level ratios (tokens or cost per successful task) are computed from run totals, not averaged per case.
+- FR-34: Every metric is declared once, with its kind and good direction, and the diff and gate read that declaration. A computed metric that isn't declared is a test failure, not a silent gap.
+- FR-35: The diff reports whether each change is **better or worse**, reports run-level metrics without a paired significance test, and names the **most affected tag**. An agent gate profile sets thresholds on success and trajectory metrics.
+- FR-36: A **trace viewer** walks run → cases (filterable to failures) → one case's trajectory, with failed steps highlighted, a per-agent / per-tool roll-up, and any step's inputs, outputs, tool arguments and model.
+- FR-37: Failure clustering groups agentic failures by **trajectory signature** (what the agent did) rather than by question and answer text.
+- FR-38: **Root-cause analysis** assigns each failing agentic case one cause from a closed taxonomy (retry loop, step budget exhausted, scope, handoff loss, tool selection, skipped step, grounding, unknown) with evidence and a confidence, optionally against the same case in a baseline run. A case that also failed in the baseline is never blamed on the difference.
+- FR-39: An **improvement loop** proposes a revision to one prompt for the leading cause, re-evaluates, and keeps it only if the primary metric improves significantly and no gated metric regresses. It changes **prompt text only**, as new immutable versions in a prompt store, and applies a revision only with approval. Every run records the prompt versions it used.
+- FR-40: Sagwa's evaluation tools are available over **MCP**, each answering exactly as its CLI command does, so a coding agent can check its own change for regressions.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -181,7 +198,7 @@ Nothing here starts before the v1 milestones in §10 are hit — this section ex
 | **Multi-judge ensembling with disagreement-based active learning** | 2+ judges scored per case, a disagreement metric, and a queue surfacing high-disagreement cases for human labeling | Needs a working single-judge calibration first (FR-13..15) — a refinement on a result that doesn't exist yet |
 | **Hosted, multi-tenant version with auth** | Auth, billing, tenant isolation — effectively a different product | Explicit §3 non-goal: a single-user/single-team tool, not a commercial platform |
 | **Automatic golden-set expansion from production failure logs** | A pipeline mining flagged/low-score production cases, deduping against the existing golden set, routing candidates through human review | Depends on online sampling existing first |
-| **Agentic/tool-use evaluation** (trajectory scoring, not just final-output scoring) | A different metrics shape than any v1 task type — plus trace storage, trajectory diffing and root-cause clustering | Planned in detail in [AGENTIC_PRD.md](./AGENTIC_PRD.md); explicitly gated behind the v1 gaps in [STATUS.md](./STATUS.md) |
+| ~~**Agentic/tool-use evaluation**~~ **Built (2026-11), see §5.10 FR-29–FR-40.** Was: trajectory scoring, not just final-output scoring | A different metrics shape than any v1 task type — plus trace storage, trajectory diffing and root-cause clustering | Built after the v1 gaps closed; requirements in §5.10 |
 | **Next.js dashboard rebuild** | Reimplementing the Streamlit v1 views | A stretch goal once the v1 dashboard exists — polish, not capability |
 | **Langfuse tracing** | Wiring a tracer into the runner | Deferred mid-project, not future scope exactly — see [ADR-0002](./adr/0002-defer-langfuse.md). `results.trace_id` is already reserved for it |
 | **Postgres + pgvector** | A `DATABASE_URL` change plus an embedding column | The intended production store, deferred only because SQLite needs no service — see [ADR-0004](./adr/0004-sqlite-default-defer-postgres.md). Revisit when clustering wants to persist embeddings |
