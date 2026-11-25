@@ -37,6 +37,9 @@ metrics = ["ragas>=0.1", "langchain-community<0.4", "langchain-groq>=0.1", "sent
 clustering = ["sentence-transformers>=3.0", "hdbscan>=0.8", "scipy>=1.13"]
 # Week 11: trend/cluster-browser dashboard.
 dashboard = ["streamlit>=1.35"]
+# `sagwa improve` only (ADR-0008): LangGraph orchestrates that one workflow and
+# is not imported anywhere else, so the core install doesn't need it.
+improve = ["langgraph>=0.2"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

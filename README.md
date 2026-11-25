@@ -87,6 +87,7 @@ sagwa run --target my_adapters.support_triage:SupportTriageAdapter --dataset gol
 | `sagwa gate --run-id R` | Exit non-zero if a metric misses its threshold. `--baseline A` also fails on a significant regression against run A |
 | `sagwa cluster --run-id R` | Group failing cases with HDBSCAN and label each cluster |
 | `sagwa rootcause --run-id R --baseline B` | For agent runs: group failing cases by cause (retry loop, lost handoff, wrong tool, skipped step, ...) with the evidence from each trajectory |
+| `sagwa improve --target T --dataset D` | For agents with a prompt store: diagnose failures, have an LLM revise one prompt, re-run, and keep the revision only if it's a significant improvement. Asks before applying; `--dry-run` only proposes |
 | `sagwa dashboard` | Streamlit trends for metrics, cost and latency, with per-case drill-down |
 | `sagwa migrate` | Create or upgrade the database schema |
 
