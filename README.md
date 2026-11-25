@@ -1,6 +1,6 @@
 # Sagwa
 
-**CI for LLM quality.** Run a golden dataset against any prompt, model or pipeline, and fail the PR when quality regresses, the way a failing unit test would.
+**CI/CD and observability for evaluating and continuously improving LLM and agentic systems.** Run a golden dataset against any prompt, model, pipeline or agent, and fail the PR when quality regresses, the way a failing unit test would. For agents, Sagwa evaluates what the agent *did*, not just what it answered.
 
 Python 3.11+ · Typer CLI · SQLAlchemy/Alembic (SQLite by default) · Apache 2.0 · early alpha
 
@@ -13,6 +13,8 @@ Most teams ship LLM changes on vibes: tweak a prompt, skim five outputs, merge. 
 3. **Diff** two runs with statistical significance, not eyeballing.
 4. **Gate** CI so a regressing PR fails.
 5. **Cluster** the failures to see systemic issues.
+6. **For agents:** store every step, score the trajectory, see each case's trace, and name the root cause of failures.
+7. **Improve** a prompt with a guarded loop that keeps a revision only if it is a significant improvement.
 
 ## It catches real regressions
 
@@ -77,6 +79,33 @@ Run it. The module path resolves like `python -m`, from your working directory:
 ```bash
 sagwa run --target my_adapters.support_triage:SupportTriageAdapter --dataset golden_sets/support_triage.jsonl
 ```
+
+## Evaluate an agent
+
+An agent adapter returns an `AgentRun`: the usual answer fields plus the steps that produced them. Plain adapters keep working unchanged.
+
+```python
+from sagwa.adapters.base import AgentRun, AgentStep
+
+class SupportAgent:
+    name = "support-agent"
+
+    def run(self, case_input: str) -> AgentRun:
+        steps = [AgentStep("agent", "planner", input=case_input, output=plan, tokens=380),
+                 AgentStep("tool", "order_db", input=sql, output=rows, metadata={"arguments": {"sql": sql}}),
+                 AgentStep("agent", "writer", output=answer, tokens=290)]
+        return AgentRun(answer=answer, context=None, latency_ms=2400, tokens=670, cost_usd=None, trajectory=steps)
+```
+
+An agentic case says what success means, checked deterministically (never by the judge):
+
+```jsonl
+{"id": "a-001", "input": "How many orders shipped late in Q3?", "task_type": "agentic", "expected_tools": ["order_db"], "success_criteria": {"answer_matches": "\\b13\\b", "required_tools": ["order_db"], "max_steps": 20}}
+```
+
+Then `sagwa run` stores every step, and you get `task.success` plus trajectory metrics (tool-selection accuracy, retry and loop rates, handoff loss, tokens per successful task). `sagwa diff` and `sagwa gate --config config/gates.agentic.yaml` work on them as on any metric. `sagwa rootcause` names why cases failed, the dashboard's **Agent traces** tab shows each trajectory, and `sagwa mcp` lets a coding agent do all of this itself ([docs/MCP.md](docs/MCP.md)).
+
+**On the reference agent** (`examples/agent/`, a multi-agent support bot with four single-change regression variants), cutting the researcher-to-writer handoff to 150 characters took success from 6/8 to 1/8. `agent.handoff_loss_rate` went from 0 to 1.0, `sagwa rootcause` classified all 7 failures as `HANDOFF` with the evidence ("passed on 150 of 344–906 characters"), and the agent gate failed it on tokens per successful task: 31,374 against about 3,900.
 
 ## Commands
 
@@ -156,7 +185,8 @@ A practical split: a small, fast golden set on every PR, the full set nightly or
 - **This repo's own CI gates an offline pipeline**: Lead-3 summarization on CNN/DailyMail (`benchmarks/offline.py`), on reference and safety metrics only (`config/gates.ci.yaml`), so it needs no API key. A one-line Lead-3→Lead-1 PR passed every absolute threshold and was blocked by the baseline comparison ([#2](https://github.com/Rajaykumar12/sagwa/pull/2)); a no-op PR passed ([#1](https://github.com/Rajaykumar12/sagwa/pull/1)). CI does not gate an LLM target, because that needs a key and a token budget per PR.
 - **Clustering and dashboard are provisional:** `min_cluster_size` is untuned at real scale. The dashboard works on real runs but groups trends by adapter class and always judges failures by `config/gates.yaml`.
 - **Free API tiers limit throughput** to roughly one 50-case RAG run per model per day. `benchmarks/run_benchmarks.sh` deletes its database first.
-- **Tracing is deferred:** `results.trace_id` is a reserved column.
+- **Agent features are newer and less proven than the core.** They are tested, and verified on stored runs of the reference agent: the lossy-handoff variant above, and a thin-planner variant that `rootcause` correctly did *not* blame (its one failure also failed in the baseline). The tool-overlap and retry-loop variants, and `sagwa improve` against a live agent, are built and tested offline but not yet run live.
+- **External tracing is deferred:** Sagwa stores its own agent steps; `results.trace_id` is reserved for a tracer such as Langfuse ([ADR-0010](docs/adr/0010-agent-trace-model.md)).
 
 Storage is SQLite by default; the schema is database-agnostic, so Postgres is a config change.
 
