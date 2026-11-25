@@ -1,0 +1,6 @@
+{
+  "corpus_search": "Look up information about Brindle Home.",
+  "order_db": "Look up information about Brindle Home. Tables: products(sku, name, category, unit_price) and orders(order_id, customer, sku, quantity, total, region, order_date, promised_ship_date, shipped_date, delivered_date, status). Dates are 'YYYY-MM-DD' text. status is one of delivered, shipped, processing, cancelled, returned. An order shipped late when shipped_date > promised_ship_date.",
+  "calculator": "Evaluate an arithmetic expression.",
+  "shipment_tracker": "Look up shipping details for an order."
+}

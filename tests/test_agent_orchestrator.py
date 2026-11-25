@@ -6,7 +6,7 @@ from types import SimpleNamespace as NS
 
 from examples.agent import agents
 from examples.agent.orchestrator import AgentConfig, Orchestrator
-from examples.agent.tools import AMBIGUOUS_DESCRIPTIONS, GENERIC_NAMES, shipment_tracker
+from examples.agent.tools import GENERIC_NAMES, shipment_tracker
 
 
 def _msg(content="", tool_calls=()):
@@ -103,7 +103,7 @@ def test_reviewer_runs_only_when_the_plan_asks_for_verification():
 
 
 def test_v4_planner_prompt_no_longer_asks_for_verification():
-    assert "Verify:" in agents.PLANNER_V1 and "Verify:" not in agents.PLANNER_THIN
+    assert "Verify:" in agents.STORE.load("planner", "v1") and "Verify:" not in agents.STORE.load("planner", "v2")
 
 
 def test_reviewer_revise_triggers_one_rewrite():
@@ -123,7 +123,7 @@ def test_v5_handoff_truncates_findings_and_marks_it():
 
 
 def test_v2_gives_both_lookup_tools_the_same_description():
-    _, client = _run(config=replace(AgentConfig(), tool_descriptions=dict(AMBIGUOUS_DESCRIPTIONS)))
+    _, client = _run(config=replace(AgentConfig(), prompt_versions={"tool_descriptions": "v2"}))
     tools = next(t for m, t in client.calls if t)
     descriptions = {t["function"]["name"]: t["function"]["description"] for t in tools}
     assert descriptions["corpus_search"].split(".")[0] == descriptions["order_db"].split(".")[0]
@@ -157,9 +157,26 @@ def test_v2_model_sees_generic_names_but_the_trajectory_records_real_ones():
             return _msg("Findings: 13.")
         return _msg(tool_calls=[("lookup", '{"sql": "SELECT count(*) FROM orders"}')])
 
-    config = replace(AgentConfig(), tool_descriptions=dict(AMBIGUOUS_DESCRIPTIONS), tool_names=dict(GENERIC_NAMES))
+    config = replace(AgentConfig(), prompt_versions={"tool_descriptions": "v2"}, tool_names=dict(GENERIC_NAMES))
     run, client = _run(config=config, research=research)
     seen = {t["function"]["name"] for t in next(t for m, t in client.calls if t)}
     assert {"search", "lookup"} <= seen and "order_db" not in seen
     tool = next(s for s in run.trajectory if s.step_type == "tool")
     assert tool.name == "order_db" and tool.error is None
+
+
+def test_variants_pin_store_versions_and_the_baseline_follows_current():
+    from examples.agent.adapter import BrindleAgentV1, V2_ToolOverlap, V4_ThinPlanner
+
+    client = ScriptedClient(_script())
+    resolve = lambda cls: Orchestrator(replace(cls.config, prompt_versions=dict(cls.config.prompt_versions)),
+                                       client=client).prompt_versions
+    assert resolve(BrindleAgentV1) == {name: agents.STORE.current(name) for name in agents.PROMPT_NAMES}
+    assert resolve(V2_ToolOverlap)["tool_descriptions"] == "v2"
+    assert resolve(V4_ThinPlanner)["planner"] == "v2"
+
+
+def test_the_orchestrator_sends_exactly_the_stored_prompt_text():
+    run, client = _run()
+    planner_prompt = client.calls[0][0][0]["content"]
+    assert planner_prompt == agents.STORE.load("planner", "v1").format(question="How many orders shipped late?")

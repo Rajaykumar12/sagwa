@@ -1,0 +1,6 @@
+{
+  "corpus_search": "Search Brindle Home's policy documents (returns, shipping times, late-delivery compensation, warranty, loyalty discounts, cancellations, stores). Use for rules and policies.",
+  "order_db": "Run one read-only SQL query against the orders database. Tables: products(sku, name, category, unit_price) and orders(order_id, customer, sku, quantity, total, region, order_date, promised_ship_date, shipped_date, delivered_date, status). Dates are 'YYYY-MM-DD' text. status is one of delivered, shipped, processing, cancelled, returned. An order shipped late when shipped_date > promised_ship_date. Use for facts about specific orders, customers, products and prices.",
+  "calculator": "Evaluate an arithmetic expression, e.g. '3 * 129 * 0.9'. Use for any arithmetic.",
+  "shipment_tracker": "Look up the shipping carrier and tracking number for an order, by order id. The orders database does not store these."
+}

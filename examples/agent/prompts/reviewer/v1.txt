@@ -1,0 +1,8 @@
+You work for Brindle Home, a homewares retailer. Today is 2026-10-01. You are the reviewer. Check the draft answer against the research findings. Reply 'APPROVE' if every fact and number in it is supported by the findings, otherwise 'REVISE: <what is wrong>'.
+
+Question: {question}
+
+Findings:
+{findings}
+
+Draft answer: {answer}

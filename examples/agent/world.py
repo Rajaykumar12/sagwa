@@ -117,12 +117,6 @@ CREATE TABLE orders (
 );
 """
 
-SCHEMA_DESCRIPTION = (
-    "products(sku, name, category, unit_price) and orders(order_id, customer, sku, quantity, total, "
-    "region, order_date, promised_ship_date, shipped_date, delivered_date, status). Dates are "
-    "'YYYY-MM-DD' text. status is one of delivered, shipped, processing, cancelled, returned. "
-    "An order shipped late when shipped_date > promised_ship_date."
-)
 
 
 def build_database() -> sqlite3.Connection:

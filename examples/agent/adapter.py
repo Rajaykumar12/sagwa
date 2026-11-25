@@ -9,16 +9,25 @@ from dataclasses import replace
 
 from examples.agent import agents
 from examples.agent.orchestrator import AgentConfig, Orchestrator
-from examples.agent.tools import AMBIGUOUS_DESCRIPTIONS, GENERIC_NAMES
+from examples.agent.tools import GENERIC_NAMES
 from sagwa.adapters.base import AgentRun
 
 
 class BrindleAgentV1:
     name = "brindle-agent-v1"
     config = AgentConfig()
+    # What `sagwa improve` may revise for each root cause: prompt text only.
+    # HANDOFF has no entry, because V5's truncation is code, not a prompt.
+    prompt_store = agents.STORE
+    prompt_targets = {"TOOL_SELECTION": "tool_descriptions", "PLANNING": "planner", "SCOPE": "planner",
+                      "BUDGET_EXHAUSTED": "planner", "INFINITE_RETRY": "researcher", "GROUNDING": "writer"}
 
-    def __init__(self):
-        self.orchestrator = Orchestrator(self.config)
+    def __init__(self, prompt_versions: dict[str, str] | None = None):
+        """`prompt_versions` overrides this variant's own pins; `sagwa improve`
+        passes the candidate versions here."""
+        config = replace(self.config, prompt_versions={**self.config.prompt_versions, **(prompt_versions or {})})
+        self.orchestrator = Orchestrator(config)
+        self.prompt_versions = self.orchestrator.prompt_versions  # recorded as Run.prompt_version
         self.model_label = agents.MODEL
 
     def run(self, case_input: str) -> AgentRun:
@@ -35,7 +44,7 @@ class V2_ToolOverlap(BrindleAgentV1):
     which is why the names change too."""
 
     name = "brindle-agent-v2-tool-overlap"
-    config = replace(AgentConfig(), tool_descriptions=dict(AMBIGUOUS_DESCRIPTIONS), tool_names=dict(GENERIC_NAMES))
+    config = replace(AgentConfig(), prompt_versions={"tool_descriptions": "v2"}, tool_names=dict(GENERIC_NAMES))
 
 
 class V3_NoRetryCap(BrindleAgentV1):
@@ -52,7 +61,7 @@ class V4_ThinPlanner(BrindleAgentV1):
     so the reviewer never runs."""
 
     name = "brindle-agent-v4-thin-planner"
-    config = replace(AgentConfig(), planner_prompt=agents.PLANNER_THIN)
+    config = replace(AgentConfig(), prompt_versions={"planner": "v2"})
 
 
 class V5_LossyHandoff(BrindleAgentV1):

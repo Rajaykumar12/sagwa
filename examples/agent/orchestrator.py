@@ -13,8 +13,7 @@ import time
 from dataclasses import dataclass, field
 
 from examples.agent import agents
-from examples.agent.tools import (CLEAR_DESCRIPTIONS, calculator, corpus_search, order_db, shipment_tracker,
-                                  tool_schemas)
+from examples.agent.tools import calculator, corpus_search, order_db, shipment_tracker, tool_schemas
 from examples.agent.world import build_database
 from sagwa.adapters.base import AgentRun, AgentStep
 
@@ -23,13 +22,14 @@ from sagwa.adapters.base import AgentRun, AgentStep
 class AgentConfig:
     """Every knob a regression variant turns. The baseline is the default."""
 
-    tool_descriptions: dict[str, str] = field(default_factory=lambda: dict(CLEAR_DESCRIPTIONS))
+    # Prompt store version per prompt (see agents.PROMPT_NAMES); a prompt not
+    # listed uses the store's `current` version.
+    prompt_versions: dict[str, str] = field(default_factory=dict)
     # Name the model sees for a tool, when different from its real name.
     tool_names: dict[str, str] = field(default_factory=dict)
     # Consecutive failures of one tool before the researcher is told to stop
     # calling it. None = never (V3_NoRetryCap).
     retry_cap: int | None = 2
-    planner_prompt: str = agents.PLANNER_V1
     # Characters of the researcher's findings passed to the writer. None = all.
     handoff_chars: int | None = None
     # Hard stop on trajectory length, in every variant, so even a runaway agent
@@ -49,7 +49,11 @@ class Orchestrator:
         self.config = config or AgentConfig()
         self.client = client or _groq()
         self.conn = build_database()
-        self.tools = tool_schemas(self.config.tool_descriptions, self.config.tool_names)
+        # Resolved once, so every case in a run uses the same versions.
+        self.prompt_versions = {name: self.config.prompt_versions.get(name) or agents.STORE.current(name)
+                                for name in agents.PROMPT_NAMES}
+        self.prompts = {name: agents.STORE.load(name, v) for name, v in self.prompt_versions.items()}
+        self.tools = tool_schemas(json.loads(self.prompts["tool_descriptions"]), self.config.tool_names)
         self.real_name = {alias: name for name, alias in self.config.tool_names.items()}
 
     def _call_tool(self, name: str, args: dict) -> str:
@@ -71,7 +75,7 @@ class Orchestrator:
         return output
 
     def _research(self, steps: list[AgentStep], question: str, plan: str) -> str:
-        messages = [{"role": "system", "content": agents.RESEARCHER},
+        messages = [{"role": "system", "content": self.prompts["researcher"]},
                     {"role": "user", "content": f"Question: {question}\n\nPlan:\n{plan}"}]
         failures: dict[str, int] = {}
         while len(steps) < self.config.max_steps:
@@ -112,21 +116,21 @@ class Orchestrator:
     def run(self, question: str) -> AgentRun:
         start = time.perf_counter()
         steps: list[AgentStep] = []
-        plan = self._agent_step(steps, "planner", self.config.planner_prompt.format(question=question), max_tokens=400)
+        plan = self._agent_step(steps, "planner", self.prompts["planner"].format(question=question), max_tokens=400)
         findings = self._research(steps, question, plan)
 
         payload = findings if self.config.handoff_chars is None else findings[: self.config.handoff_chars]
         steps.append(AgentStep("handoff", "researcher->writer", input=findings, output=payload,
                                metadata={"truncated": len(payload) < len(findings)}))
 
-        answer = self._agent_step(steps, "writer", agents.WRITER.format(question=question, findings=payload, feedback=""))
+        answer = self._agent_step(steps, "writer", self.prompts["writer"].format(question=question, findings=payload, feedback=""))
         # The reviewer runs only when the plan asked for verification, so a
         # planner that stops planning it (V4) really does skip validation.
         if "verify" in plan.lower():
-            verdict = self._agent_step(steps, "reviewer", agents.REVIEWER.format(
+            verdict = self._agent_step(steps, "reviewer", self.prompts["reviewer"].format(
                 question=question, findings=payload, answer=answer), max_tokens=300)
             if verdict.upper().startswith("REVISE"):
-                answer = self._agent_step(steps, "writer", agents.WRITER.format(
+                answer = self._agent_step(steps, "writer", self.prompts["writer"].format(
                     question=question, findings=payload, feedback=f"\n\nReviewer feedback on your draft: {verdict}"))
 
         return AgentRun(

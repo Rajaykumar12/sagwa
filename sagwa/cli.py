@@ -115,8 +115,9 @@ def run(
         typer.echo(f"Missing required environment variable for target '{target}': {e}")
         raise typer.Exit(1)
 
-    with get_session() as session:
-        if resume is not None:
+    run_id = None
+    if resume is not None:
+        with get_session() as session:
             run_row = session.get(Run, resume)
             if run_row is None:
                 typer.echo(f"Unknown run id: {resume}")
@@ -125,7 +126,37 @@ def run(
             cases = [case for case in cases if case.id not in done]
             run_row.status = "running"
             typer.echo(f"Resuming run {resume}: {len(done)} case(s) already stored, {len(cases)} to go")
-        else:
+        run_id = resume
+
+    run_id, outcomes = execute_run(adapter, target, dataset, cases, concurrency=concurrency, run_id=run_id)
+    failed = [o for o in outcomes if o.error is not None]
+
+    with get_session() as session:
+        total = session.query(Result).filter(Result.run_id == run_id).count()
+        errored = session.query(Result).filter(Result.run_id == run_id, Result.error.isnot(None)).count()
+
+    typer.echo(
+        f"Run {run_id}: {total} case(s) against target '{target}'"
+        + (f" ({errored} failed)" if errored else "")
+    )
+    if output_json is not None:
+        output_json.write_text(
+            json.dumps(
+                {"run_id": run_id, "target": target, "dataset": str(dataset),
+                 "cases": total, "errored": errored, "ran_now": len(outcomes),
+                 "failed_now": len(failed)},
+                indent=2,
+            )
+        )
+
+
+def execute_run(adapter, target: str, dataset: Path, cases, concurrency: int = 5, run_id: str | None = None):
+    """Runs `cases` through `adapter` and stores every result as it completes;
+    the body of `sagwa run`, callable from code (`sagwa improve` runs candidate
+    prompt versions through it). Creates a new `Run` unless `run_id` names one
+    to add to. Returns `(run_id, outcomes)`."""
+    if run_id is None:
+        with get_session() as session:
             run_row = Run(
                 sagwa_git_sha=_sagwa_git_sha(),
                 target_pipeline_git_sha=_target_pipeline_git_sha(adapter),
@@ -133,11 +164,12 @@ def run(
                 model=_run_model_label(adapter),
                 dataset_path=str(dataset),
                 dataset_sha256=_dataset_sha256(dataset),
+                prompt_version=_run_prompt_version(adapter),
                 status="running",
             )
             session.add(run_row)
             session.flush()  # populate run_row.id
-        run_id = run_row.id
+            run_id = run_row.id
 
     def _persist(outcome) -> None:
         """Called once per finished case, from the runner's collecting thread."""
@@ -176,26 +208,9 @@ def run(
             session.add(row)
 
     outcomes = run_cases(adapter, cases, max_concurrency=concurrency, on_outcome=_persist)
-    failed = [o for o in outcomes if o.error is not None]
-
     with get_session() as session:
         session.get(Run, run_id).status = "completed"
-        total = session.query(Result).filter(Result.run_id == run_id).count()
-        errored = session.query(Result).filter(Result.run_id == run_id, Result.error.isnot(None)).count()
-
-    typer.echo(
-        f"Run {run_id}: {total} case(s) against target '{target}'"
-        + (f" ({errored} failed)" if errored else "")
-    )
-    if output_json is not None:
-        output_json.write_text(
-            json.dumps(
-                {"run_id": run_id, "target": target, "dataset": str(dataset),
-                 "cases": total, "errored": errored, "ran_now": len(outcomes),
-                 "failed_now": len(failed)},
-                indent=2,
-            )
-        )
+    return run_id, outcomes
 
 
 def _target_pipeline_git_sha(adapter: TargetAdapter) -> str | None:
@@ -216,6 +231,18 @@ def _run_model_label(adapter: TargetAdapter) -> str:
     per-query across model tiers) can set this in its own `__init__`
     instead of Sagwa's core needing to special-case it by name."""
     return getattr(adapter, "model_label", "n/a")
+
+
+def _run_prompt_version(adapter: TargetAdapter) -> str | None:
+    """Duck-types on an optional `prompt_versions` dict (prompt name ->
+    version), like `model_label`: an adapter whose prompts come from a
+    `sagwa.prompts.PromptStore` records exactly which versions a run used."""
+    versions = getattr(adapter, "prompt_versions", None)
+    if not versions:
+        return None
+    from sagwa.prompts import format_versions
+
+    return format_versions(versions)
 
 
 @app.command()

@@ -9,7 +9,7 @@ import operator
 import re
 import sqlite3
 
-from examples.agent.world import DOCUMENTS, SCHEMA_DESCRIPTION
+from examples.agent.world import DOCUMENTS
 
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = {"the", "a", "an", "of", "to", "in", "is", "what", "how", "for", "and", "or", "do", "does", "can", "i", "my", "on", "it", "be"}
@@ -80,23 +80,9 @@ def calculator(expression: str) -> str:
     return str(round(result, 4))
 
 
-# Tool schemas in the OpenAI/Groq function-calling format. `descriptions`
-# is swappable because V2_ToolOverlap regresses exactly these strings.
-CLEAR_DESCRIPTIONS = {
-    "corpus_search": "Search Brindle Home's policy documents (returns, shipping times, late-delivery "
-                     "compensation, warranty, loyalty discounts, cancellations, stores). Use for rules and policies.",
-    "order_db": "Run one read-only SQL query against the orders database. Tables: " + SCHEMA_DESCRIPTION
-                + " Use for facts about specific orders, customers, products and prices.",
-    "calculator": "Evaluate an arithmetic expression, e.g. '3 * 129 * 0.9'. Use for any arithmetic.",
-    "shipment_tracker": "Look up the shipping carrier and tracking number for an order, by order id. "
-                        "The orders database does not store these.",
-}
-AMBIGUOUS_DESCRIPTIONS = {
-    "corpus_search": "Look up information about Brindle Home.",
-    "order_db": "Look up information about Brindle Home. Tables: " + SCHEMA_DESCRIPTION,
-    "calculator": "Evaluate an arithmetic expression.",
-    "shipment_tracker": "Look up shipping details for an order.",
-}
+# Tool descriptions (what the model reads to choose a tool) are prompt text and
+# live in the prompt store as `tool_descriptions/vN.txt` (JSON): v1 says what
+# each tool holds, v2 is V2_ToolOverlap's trimmed version.
 # V2_ToolOverlap also renames the two lookup tools, as an "API cleanup" PR
 # would: with self-describing names gone, nothing tells them apart.
 GENERIC_NAMES = {"corpus_search": "search", "order_db": "lookup"}
