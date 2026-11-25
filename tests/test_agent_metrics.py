@@ -97,3 +97,18 @@ def test_per_success_ignores_errored_cases_and_is_none_without_data():
     assert tokens_per_success([_result(False, 100)]) is None  # nothing succeeded
     assert cost_per_success([_result(True, 100, cost=None)]) is None  # no cost recorded
     assert cost_per_success([_result(True, 100, 0.1), _result(True, 100, None)]) is None  # partial sum
+
+
+
+def test_tool_errors_dont_count_for_cases_that_expect_them():
+    from sagwa.datasets.schema import GoldenCase, SuccessCriteria
+    from sagwa.metrics import compute_agent_metrics
+
+    outage = [_tool("shipment_tracker", "1050", "503"), _tool("shipment_tracker", "1050", "503")]
+    run = AgentRun(answer="Not available.", context=None, latency_ms=1, tokens=1, cost_usd=None, trajectory=outage)
+    expects = GoldenCase(id="a", input="q", task_type="agentic", expected_tools=["shipment_tracker"],
+                         success_criteria=SuccessCriteria(answer_matches="available", must_not_error=False))
+    strict = expects.model_copy(update={"success_criteria": SuccessCriteria(answer_matches="available")})
+    assert compute_agent_metrics(expects, run)["agent"]["tool_error_rate"] is None
+    assert compute_agent_metrics(expects, run)["agent"]["tool_retry_rate"] == 0.5  # still measured
+    assert compute_agent_metrics(strict, run)["agent"]["tool_error_rate"] == 1.0

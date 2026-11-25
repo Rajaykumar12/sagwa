@@ -56,4 +56,11 @@ def compute_agent_metrics(case: GoldenCase, run: AgentRun) -> dict:
         metrics["task"] = compute_success(case.success_criteria, run)
     if run.trajectory:
         metrics["agent"] = compute_trajectory_metrics(run, case.expected_tools)
+        # A case whose criteria allow step errors is built around a failing
+        # tool (e.g. a service outage): its errors are the expected behavior,
+        # so they don't count toward the run's tool error rate. Seen live
+        # (2026-11-25): the baseline failed a `tool_error_rate <= 0.10` gate on
+        # exactly those cases. Retry, loop and recovery rates still apply.
+        if case.success_criteria is not None and not case.success_criteria.must_not_error:
+            metrics["agent"]["tool_error_rate"] = None
     return metrics

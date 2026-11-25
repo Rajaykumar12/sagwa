@@ -21,6 +21,10 @@ metrics:
   judge.score:
     op: gte
     value: 0.70
+  # Counts only cases whose criteria forbid step errors: a case built around a
+  # failing tool (must_not_error: false) has no tool_error_rate. A run made of
+  # nothing but such cases therefore has no value here, and the gate fails a
+  # configured metric that wasn't computed.
   agent.tool_error_rate:
     op: lte
     value: 0.10
