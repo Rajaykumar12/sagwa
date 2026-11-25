@@ -155,3 +155,15 @@ def test_metric_deltas_skip_nan_pairs():
     assert delta.n == 2
     assert delta.baseline_mean == pytest.approx(0.8)
     assert delta.candidate_mean == pytest.approx(0.2)
+
+
+def test_bootstrap_never_calls_a_tiny_sample_significant():
+    """Seen live (2026-11-25): two cases whose steps both rose by 3 came out
+    'significant', because resampling two same-sign differences can't produce
+    an interval that includes zero."""
+    from sagwa.diff import MIN_BOOTSTRAP_N
+
+    assert bootstrap_ci([7.0, 7.0], [10.0, 10.0], n_resamples=500)[2] is False
+    n = MIN_BOOTSTRAP_N
+    assert bootstrap_ci([7.0] * (n - 1), [10.0] * (n - 1), n_resamples=500)[2] is False
+    assert bootstrap_ci([7.0] * n, [10.0] * n, n_resamples=500)[2] is True

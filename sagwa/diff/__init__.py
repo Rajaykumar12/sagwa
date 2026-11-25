@@ -116,6 +116,13 @@ def load_run_results(session, run_id: str) -> dict[str, Result]:
     return {row.case_id: row for row in rows}
 
 
+# Below this many paired cases the bootstrap never calls a change significant:
+# resampling 2 or 3 differences gives a degenerate interval that excludes zero
+# whenever the differences share a sign (seen live 2026-11-25: n=2 "significant").
+# McNemar's exact test handles small n correctly and has no such floor.
+MIN_BOOTSTRAP_N = 10
+
+
 def bootstrap_ci(
     baseline_values: list[float],
     candidate_values: list[float],
@@ -125,7 +132,7 @@ def bootstrap_ci(
 ) -> tuple[float, float, bool]:
     """Paired bootstrap CI on the candidate-minus-baseline mean delta.
     Returns `(ci_low, ci_high, significant)`; significant means the CI
-    excludes zero."""
+    excludes zero and there are at least `MIN_BOOTSTRAP_N` pairs."""
     n = len(baseline_values)
     if n == 0 or n != len(candidate_values):
         raise ValueError("baseline_values and candidate_values must be the same, nonzero length")
@@ -143,7 +150,7 @@ def bootstrap_ci(
     hi_idx = int((1 - alpha / 2) * n_resamples) - 1
     ci_low = resampled_means[max(0, lo_idx)]
     ci_high = resampled_means[min(n_resamples - 1, hi_idx)]
-    significant = ci_low > 0 or ci_high < 0
+    significant = (ci_low > 0 or ci_high < 0) and n >= MIN_BOOTSTRAP_N
     return ci_low, ci_high, significant
 
 
