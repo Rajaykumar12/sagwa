@@ -1,0 +1,6 @@
+{
+  "corpus_search": "Search the company's knowledge base (FAQs, policies, product info, etc.) for general information about Brindle Home, such as gift card terms, store hours, return policies, and other non‑transactional details.",
+  "order_db": "Query the transactional order database for Brindle Home. Available tables: products(sku, name, category, unit_price) and orders(order_id, customer, sku, quantity, total, region, order_date, promised_ship_date, shipped_date, delivered_date, status). Use this tool only for order‑related queries (order status, shipping dates, product pricing, etc.).",
+  "calculator": "Evaluate an arithmetic expression.",
+  "shipment_tracker": "Look up shipping details for an order."
+}
