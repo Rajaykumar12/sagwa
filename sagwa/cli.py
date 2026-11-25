@@ -398,7 +398,7 @@ def improve(
 
     from sagwa.improve.graph import improve as run_improve
 
-    if "GROQ_API_KEY" not in os.environ:
+    if not os.environ.get("GROQ_API_KEY"):
         typer.echo("sagwa improve needs GROQ_API_KEY: an LLM writes the prompt revisions.")
         raise typer.Exit(1)
     try:
@@ -428,6 +428,18 @@ def improve(
     typer.echo(f"\n{state.get('outcome', '')}")
     if output_json is not None:
         output_json.write_text(json.dumps(state, indent=2, default=str))
+
+
+@app.command("mcp")
+def mcp_serve():
+    """Serve Sagwa's tools over MCP on stdio (docs/AGENTIC_PRD.md Phase 7), for
+    an MCP client to launch as a subprocess. Needs the `mcp` extra."""
+    try:
+        from sagwa.mcp.server import mcp
+    except ImportError as e:
+        typer.echo(f"sagwa mcp needs the `mcp` extra (pip install 'sagwa[mcp]'): {e}")
+        raise typer.Exit(1)
+    mcp.run()
 
 
 @app.command()

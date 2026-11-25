@@ -40,6 +40,8 @@ dashboard = ["streamlit>=1.35"]
 # `sagwa improve` only (ADR-0008): LangGraph orchestrates that one workflow and
 # is not imported anywhere else, so the core install doesn't need it.
 improve = ["langgraph>=0.2"]
+# `sagwa mcp` (ADR-0009). The server uses the v2 API (`MCPServer`), so >=2.
+mcp = ["mcp>=2.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
