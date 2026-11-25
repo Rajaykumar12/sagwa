@@ -18,6 +18,7 @@ graphify-out/
 !docs/PRD.md
 !docs/ARCHITECTURE.md
 !docs/adr/*.md
+!docs/MCP.md
 !calibration/calibration_report.md
 
 # Benchmark run artifacts: regenerable, and the DB is a binary that churns.
