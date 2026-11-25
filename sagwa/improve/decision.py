@@ -43,9 +43,10 @@ def decide(diff: DiffResult, gates_config: dict, primary: str = "task.success", 
         return Decision(False, [f"{primary} was not computed in both runs"])
 
     higher_is_better = METRICS[primary].higher_is_better if primary in METRICS else True
-    better = (p.delta > 0) == higher_is_better and abs(p.delta) > tolerance
-    if not (p.significant and better):
-        why = "not significant" if better else "not an improvement"
+    right_way = (p.delta > 0) == higher_is_better
+    if not (p.significant and right_way and abs(p.delta) > tolerance):
+        why = ("no change" if abs(p.delta) < 1e-12 else "worse" if not right_way
+               else f"within the {tolerance} tolerance" if abs(p.delta) <= tolerance else "not significant")
         return Decision(False, [f"{_describe(p)}: {why}"])
 
     regressed = [

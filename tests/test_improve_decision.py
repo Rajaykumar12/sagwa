@@ -30,7 +30,7 @@ def test_rejects_an_improvement_that_isnt_significant():
 
 def test_rejects_a_significant_change_in_the_wrong_direction():
     d = decide(_diff(_delta("task.success", 0.8, 0.5, True)), GATES)
-    assert not d.accepted and "not an improvement" in d.reasons[0]
+    assert not d.accepted and d.reasons[0].endswith(": worse")
 
 
 def test_rejects_an_improvement_when_a_gated_metric_regressed():
@@ -58,4 +58,4 @@ def test_lower_is_better_primary_metric():
 
 def test_tolerance_ignores_trivially_small_significant_changes():
     d = decide(_diff(_delta("task.success", 0.80, 0.81, True)), GATES, tolerance=0.02)
-    assert not d.accepted
+    assert not d.accepted and d.reasons[0].endswith("within the 0.02 tolerance")

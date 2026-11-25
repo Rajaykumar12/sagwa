@@ -378,6 +378,59 @@ def cluster(
 
 
 @app.command()
+def improve(
+    target: str = typer.Option(..., help="Prompt-store adapter, 'module.path:ClassName' (see sagwa/improve/graph.py)"),
+    dataset: Path = typer.Option(..., help="Golden set to evaluate on"),
+    gates_config: Path = typer.Option(Path("config/gates.agentic.yaml"), help="Gate config: no gated metric may regress"),
+    primary: str = typer.Option("task.success", help="Metric that must improve significantly"),
+    max_iterations: int = typer.Option(3, help="Revise-and-evaluate rounds at most"),
+    baseline_run: str = typer.Option(None, help="Reuse this stored run as the baseline instead of evaluating"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Propose a revision and stop: no new version, no runs"),
+    yes: bool = typer.Option(False, "--yes", help="Make an accepted revision current without asking"),
+    concurrency: int = typer.Option(2, help="Max concurrent adapter calls"),
+    output_json: Path = typer.Option(None, "--json", help="Write the final state here"),
+):
+    """Evaluate, diagnose, revise one prompt, re-evaluate, and keep the
+    revision only if `primary` improved significantly with no gated metric
+    regressing (docs/AGENTIC_PRD.md Phase 6). Changes prompt text only, as new
+    versions in the target's prompt store."""
+    import os
+
+    from sagwa.improve.graph import improve as run_improve
+
+    if "GROQ_API_KEY" not in os.environ:
+        typer.echo("sagwa improve needs GROQ_API_KEY: an LLM writes the prompt revisions.")
+        raise typer.Exit(1)
+    try:
+        adapter_cls = _load_adapter_class(target)
+        cases = load_golden_set(dataset)
+        gates = load_gate_config(gates_config)
+    except (ValueError, ImportError, AttributeError, DatasetError, GateConfigError) as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+
+    from sagwa.judge.harness import groq_llm_call
+
+    try:
+        state = run_improve(
+            adapter_cls=adapter_cls, target=target, dataset=dataset, cases=cases, gates_config=gates,
+            llm_call=groq_llm_call(os.environ.get("SAGWA_IMPROVE_MODEL")),
+            approve=(lambda question: True) if yes else (lambda question: typer.confirm(question, default=False)),
+            max_iterations=max_iterations, dry_run=dry_run, baseline_run_id=baseline_run, primary=primary,
+            concurrency=concurrency,
+        )
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(1)
+
+    for line in state.get("log", []):
+        typer.echo(line)
+    typer.echo(f"\n{state.get('outcome', '')}")
+    if output_json is not None:
+        output_json.write_text(json.dumps(state, indent=2, default=str))
+
+
+@app.command()
 def rootcause(
     run_id: str = typer.Option(..., help="Agentic run id whose failing cases to diagnose"),
     baseline: str = typer.Option(
