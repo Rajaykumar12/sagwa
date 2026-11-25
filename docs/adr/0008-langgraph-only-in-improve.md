@@ -4,7 +4,7 @@
 
 ## Context
 
-`sagwa improve` is a loop with state: evaluate a baseline, diagnose its failures, revise one prompt, evaluate the candidate, then accept or reject, and go round again. The agentic plan (docs/AGENTIC_PRD.md, locked decision #6) scoped LangGraph to this workflow and kept it out of the reference agent, which is a hand-rolled loop.
+`sagwa improve` is a loop with state: evaluate a baseline, diagnose its failures, revise one prompt, evaluate the candidate, then accept or reject, and go round again. The agentic plan (now PRD §5.10) scoped LangGraph to this workflow and kept it out of the reference agent, which is a hand-rolled loop.
 
 The question was whether LangGraph should also run Sagwa's core path (`run → metrics → diff → gate`), for consistency.
 

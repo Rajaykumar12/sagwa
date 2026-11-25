@@ -7,7 +7,7 @@
 ADR-0006 deferred MCP because it would be "another way to reach the same `run`/`diff`/`gate` functions, with no named client", while the missing CI baseline was what blocked adoption. Both conditions have changed:
 
 - The baseline exists and is verified on real PRs (2026-11-19).
-- There is a named client. Coding agents (Claude Code and other MCP hosts) now make the changes Sagwa evaluates, so the agent that changed a prompt is the one best placed to ask whether it regressed anything. The agentic plan (docs/AGENTIC_PRD.md, locked decision #4) made MCP a real phase for this reason.
+- There is a named client. Coding agents (Claude Code and other MCP hosts) now make the changes Sagwa evaluates, so the agent that changed a prompt is the one best placed to ask whether it regressed anything. The agentic plan (now PRD §5.10, FR-40) made MCP a real phase for this reason.
 
 ## Decision
 

@@ -25,4 +25,4 @@ Reasons:
 
 - PRD §7's routing row is marked **de-scoped (ADR-0007)**, not left red with no owner.
 - Revisit once a judge clears κ ≥ 0.70. At that point "same agreement for less money" becomes a real question, and the per-role env vars are already the seam a router would plug into.
-- The agentic expansion (docs/AGENTIC_PRD.md) measures cost per successful task as a *target* metric. That is about the system under test, not Sagwa's own judge spend, and is unaffected.
+- The agentic expansion (PRD §5.10) measures cost per successful task as a *target* metric. That is about the system under test, not Sagwa's own judge spend, and is unaffected.
