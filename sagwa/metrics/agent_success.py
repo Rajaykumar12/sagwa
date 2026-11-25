@@ -1,8 +1,8 @@
-"""`task.success`: did an agentic case succeed? (docs/AGENTIC_PRD.md Phase 2)
+"""`task.success`: did an agentic case succeed? (PRD FR-32)
 
 Checked against the case's own `success_criteria`, deterministically: never by
 the LLM judge, and never via the gate config, which would make "success"
-depend on the thresholds it is gated against (locked decision #5).
+depend on the thresholds it is gated against (PRD FR-32).
 """
 from __future__ import annotations
 

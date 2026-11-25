@@ -1,12 +1,12 @@
 """`sagwa improve`: evaluate → diagnose → revise a prompt → re-evaluate →
-accept only if statistically better (docs/AGENTIC_PRD.md Phase 6).
+accept only if statistically better (PRD FR-39).
 
 LangGraph orchestrates this one stateful workflow and nothing else: it is
 deliberately absent from Sagwa's core (ADR-0008). Every step reuses the
 existing machinery: `execute_run` (the body of `sagwa run`), `root_causes`,
 `diff_runs` and the decision rule in `decision.py`.
 
-What it may change (locked decision #7): **prompt text only**, as a new
+What it may change (PRD FR-39): **prompt text only**, as a new
 version in the target's prompt store. `current` moves only for a revision
 that was accepted by the statistics *and* approved by a person (or
 `--yes`). Rejected revisions stay in the store as a record of what was tried.

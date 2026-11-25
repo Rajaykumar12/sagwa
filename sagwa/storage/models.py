@@ -92,7 +92,7 @@ class Result(Base):
 
 
 class TraceStep(Base):
-    """One step of an agentic case's trajectory (docs/AGENTIC_PRD.md Phase 0).
+    """One step of an agentic case's trajectory (PRD FR-30).
 
     Normalized, one row per step, rather than a JSON blob on `results`, so
     trajectory metrics and the trace viewer can query steps directly. A

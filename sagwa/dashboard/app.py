@@ -76,7 +76,7 @@ with overview_tab:
                         st.text(f"judge score: {detail['judge_score']}  |  rationale: {detail['judge_rationale']}")
 
 with traces_tab:
-    # Runs -> Cases -> Trace (docs/AGENTIC_PRD.md Phase 4).
+    # Runs -> Cases -> Trace (PRD FR-36).
     with get_session() as session:
         runs = agentic_runs(session)
     if not runs:

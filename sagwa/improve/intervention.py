@@ -1,7 +1,7 @@
-"""Propose a prompt revision for a diagnosed root cause (docs/AGENTIC_PRD.md
-Phase 6). **Prompt text only** (locked decision #7): the output is a new
-prompt string, validated and then written as a new version in the prompt
-store. No code is ever generated or run.
+"""Propose a prompt revision for a diagnosed root cause (PRD FR-39).
+**Prompt text only**: the output is a new prompt string, validated and then
+written as a new version in the prompt store. No code is ever generated or
+run.
 
 The validation is the safety net, not the LLM's good behavior: a revision
 that drops a `{placeholder}` the target fills in would crash or silently

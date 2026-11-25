@@ -1,5 +1,5 @@
 """Per-case trajectory metrics: what an agent *did*, not just what it answered
-(docs/AGENTIC_PRD.md Phase 2). All pure functions of an `AgentRun` (plus the
+(PRD FR-33). All pure functions of an `AgentRun` (plus the
 case's `expected_tools`), so they can be computed from a stored trajectory
 long after the run, with no model call.
 

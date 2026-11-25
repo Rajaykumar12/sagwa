@@ -63,12 +63,12 @@ def _error_type(error: str) -> str:
 
 
 def trajectory_signature(result: Result) -> str:
-    """What an agentic case *did*, as clustering text (docs/AGENTIC_PRD.md
-    Phase 5): the step sequence with consecutive repeats collapsed ("tool
-    shipment_tracker x10 [ConnectionError]"), lossy handoffs, and the
-    success conditions it failed. Two cases that failed the same way get
-    near-identical signatures even when their questions have nothing in
-    common, which is what input+output text can't give."""
+    """What an agentic case *did*, as clustering text (PRD FR-37): the step
+    sequence with consecutive repeats collapsed ("tool shipment_tracker x10
+    [ConnectionError]"), lossy handoffs, and the success conditions it failed.
+    Two cases that failed the same way get near-identical signatures even when
+    their questions have nothing in common, which is what input+output text
+    can't give."""
     parts: list[str] = []
     steps = list(result.trace_steps)
     i = 0

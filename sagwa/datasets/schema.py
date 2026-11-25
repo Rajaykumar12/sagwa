@@ -1,4 +1,4 @@
-"""Golden-set schema (PRD FR-1, FR-3; agentic cases: docs/AGENTIC_PRD.md Phase 1)."""
+"""Golden-set schema (PRD FR-1, FR-3; agentic cases: PRD FR-31)."""
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator

@@ -1,4 +1,4 @@
-"""Agent trace view (docs/AGENTIC_PRD.md Phase 4): a case's trajectory as a
+"""Agent trace view (PRD FR-36): a case's trajectory as a
 vertical timeline, plus a drill-down into any step.
 
 `trace_dot` is a pure function (DOT text for `st.graphviz_chart`, which

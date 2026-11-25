@@ -86,7 +86,7 @@ def case_detail(session, run_id: str, case_id: str) -> dict | None:
     }
 
 
-# --- Agent traces (docs/AGENTIC_PRD.md Phase 4) ---------------------------
+# --- Agent traces (PRD FR-36) ---------------------------
 # Everything below returns plain dicts, not ORM rows: sessions expire their
 # objects on commit, and the Streamlit layer reads them after it closes.
 

@@ -43,7 +43,7 @@ def compute_metrics(case: GoldenCase, answer: str, context: str | None) -> dict:
 
 
 def compute_agent_metrics(case: GoldenCase, run: AgentRun) -> dict:
-    """Metrics only an agentic case has (docs/AGENTIC_PRD.md Phase 2):
+    """Metrics only an agentic case has (PRD FR-32, FR-33):
     `task.success` when the case defines success criteria, and `agent.*` when
     the run recorded a trajectory. Kept apart from `compute_metrics`, whose
     callers pass only an answer and context. Pure functions, no model call,

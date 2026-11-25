@@ -392,7 +392,7 @@ def improve(
 ):
     """Evaluate, diagnose, revise one prompt, re-evaluate, and keep the
     revision only if `primary` improved significantly with no gated metric
-    regressing (docs/AGENTIC_PRD.md Phase 6). Changes prompt text only, as new
+    regressing (PRD FR-39). Changes prompt text only, as new
     versions in the target's prompt store."""
     import os
 
@@ -432,7 +432,7 @@ def improve(
 
 @app.command("mcp")
 def mcp_serve():
-    """Serve Sagwa's tools over MCP on stdio (docs/AGENTIC_PRD.md Phase 7), for
+    """Serve Sagwa's tools over MCP on stdio (PRD FR-40), for
     an MCP client to launch as a subprocess. Needs the `mcp` extra."""
     try:
         from sagwa.mcp.server import mcp
@@ -451,7 +451,7 @@ def rootcause(
     output_json: Path = typer.Option(None, "--json", help="Write machine-readable JSON here"),
 ):
     """Group an agentic run's failing cases by root cause, from a closed
-    taxonomy (docs/AGENTIC_PRD.md Phase 5): INFINITE_RETRY, BUDGET_EXHAUSTED,
+    taxonomy (PRD FR-38): INFINITE_RETRY, BUDGET_EXHAUSTED,
     SCOPE, HANDOFF, TOOL_SELECTION, PLANNING, GROUNDING, UNKNOWN."""
     from sagwa.rootcause import format_report, root_causes
 

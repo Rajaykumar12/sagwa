@@ -1,4 +1,4 @@
-"""Root-cause engine for agentic failures (docs/AGENTIC_PRD.md Phase 5).
+"""Root-cause engine for agentic failures (PRD FR-38).
 
 Turns "7 cases failed" into "7 cases: HANDOFF — the researcher->writer
 handoff passes on 18% of what the researcher found". Each failing case is

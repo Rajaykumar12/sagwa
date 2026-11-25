@@ -1,4 +1,4 @@
-"""Sagwa as an MCP server (docs/AGENTIC_PRD.md Phase 7), so a coding agent
+"""Sagwa as an MCP server (PRD FR-40), so a coding agent
 can ask "did my change regress the pipeline?" with tool calls alone.
 
 Every tool is a thin wrapper over the function the CLI command calls, and

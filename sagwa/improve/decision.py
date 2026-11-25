@@ -1,4 +1,4 @@
-"""Accept or reject a candidate prompt revision (docs/AGENTIC_PRD.md Phase 6).
+"""Accept or reject a candidate prompt revision (PRD FR-39).
 
 Accepted only when, against the baseline run:
 1. the primary metric (default `task.success`) changed significantly, in its

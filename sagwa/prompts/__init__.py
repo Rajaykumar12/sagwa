@@ -1,4 +1,4 @@
-"""Versioned prompt store (docs/AGENTIC_PRD.md Phase 6).
+"""Versioned prompt store (PRD FR-39).
 
 A prompt is a directory of immutable versions plus a pointer to the one in use:
 

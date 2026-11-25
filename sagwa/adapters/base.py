@@ -5,7 +5,7 @@ required changes to the target's own codebase.
 
 An agentic target implements `AgentAdapter` instead and returns an `AgentRun`:
 the same final-answer fields plus the trajectory of steps that produced it
-(docs/AGENTIC_PRD.md Phase 0). `AgentRun` subclasses `AdapterResult`, so every
+(PRD FR-29). `AgentRun` subclasses `AdapterResult`, so every
 consumer of an `AdapterResult` accepts one unchanged, and existing adapters
 need no edits.
 """

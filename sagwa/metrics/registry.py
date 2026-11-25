@@ -51,7 +51,7 @@ METRICS: dict[str, MetricSpec] = {
     "classification.exact_set_match": MetricSpec("binary", higher_is_better=True),
     "safety.pii.flagged": MetricSpec("binary", higher_is_better=False),
     "safety.toxicity.flagged": MetricSpec("binary", higher_is_better=False),
-    # Agentic cases (docs/AGENTIC_PRD.md Phase 2). `task.success` is the
+    # Agentic cases (PRD FR-32, FR-33). `task.success` is the
     # headline; the rest describe the trajectory that produced the answer.
     "task.success": MetricSpec("binary", higher_is_better=True),
     "agent.tool_call_accuracy": MetricSpec("continuous", higher_is_better=True),
