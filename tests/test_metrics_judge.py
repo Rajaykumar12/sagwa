@@ -79,3 +79,23 @@ def test_compute_metrics_passes_the_golden_case_reference_to_the_judge(monkeypat
     compute_metrics(case, answer="Spielberg", context="Jaws is a 1975 film directed by Steven Spielberg.")
     assert captured["expected"] == "Steven Spielberg"
     assert "1975 film" in captured["context"]
+
+
+def test_an_empty_key_counts_as_no_key(monkeypatch):
+    """CI passes "" for a missing secret; that must not trigger judge calls."""
+    from sagwa.metrics.judge_metrics import compute_judge_metric
+
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setattr("sagwa.judge.harness.groq_llm_call",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("judge must not be called")))
+    assert compute_judge_metric(query="q", answer="a") is None
+
+
+def test_ragas_with_an_empty_key_makes_no_call(monkeypatch):
+    from sagwa.metrics.ragas_metrics import compute_ragas_metrics
+
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setattr("sagwa.metrics.ragas_metrics._get_judge_llm",
+                        lambda: (_ for _ in ()).throw(AssertionError("RAGAS LLM must not be built")))
+    result = compute_ragas_metrics(query="q", context="c", answer="a")
+    assert result["faithfulness"] is None and result["_error"] == "GROQ_API_KEY not set"

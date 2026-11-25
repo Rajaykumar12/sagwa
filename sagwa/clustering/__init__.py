@@ -162,7 +162,7 @@ def label_cluster(case_texts: list[str], feature: str = "text") -> str:
     shouldn't sink the whole clustering result."""
     import os
 
-    if "GROQ_API_KEY" not in os.environ:
+    if not os.environ.get("GROQ_API_KEY"):  # empty counts as unset
         return _keyword_label(case_texts)
 
     try:

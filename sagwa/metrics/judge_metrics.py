@@ -33,7 +33,9 @@ def compute_judge_metric(
     `prompt_version` is stored per case because a judge score is only
     comparable to others from the same prompt — and only trustworthy up to the
     kappa measured for that version (FR-14, FR-15)."""
-    if "GROQ_API_KEY" not in os.environ:
+    # Empty counts as unset: CI passes "" for a secret that doesn't exist, and
+    # an empty key would make every case attempt (and retry) a doomed call.
+    if not os.environ.get("GROQ_API_KEY"):
         return None
 
     from sagwa.judge.harness import JUDGE_PROMPT_VERSION, groq_llm_call, score_absolute_with_rationale

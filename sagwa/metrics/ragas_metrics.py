@@ -97,6 +97,9 @@ def compute_ragas_metrics(query: str, context: str, answer: str) -> dict:
     except ImportError as e:
         return {"faithfulness": None, "context_precision": None, "_error": f"ragas unavailable: {e}"}
 
+    if not os.environ.get("GROQ_API_KEY"):  # empty counts as unset, as for the judge
+        return {"faithfulness": None, "context_precision": None, "_error": "GROQ_API_KEY not set"}
+
     try:
         llm = _get_judge_llm()
     except Exception as e:
